@@ -1,0 +1,4 @@
+/proxy-binance-demo/*  https://testnet.binancefuture.com/:splat  200
+/proxy-binance-real/*  https://fapi.binance.com/:splat           200
+/proxy-binance/*       https://fapi.binance.com/:splat           200
+/*                     /index.html                                200

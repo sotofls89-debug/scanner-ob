@@ -1,0 +1,26 @@
+[[redirects]]
+  from = "/proxy-binance-demo/*"
+  to = "https://testnet.binancefuture.com/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/proxy-binance-real/*"
+  to = "https://fapi.binance.com/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/proxy-binance/*"
+  to = "https://fapi.binance.com/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "*"
+    Access-Control-Allow-Methods = "*"

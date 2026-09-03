@@ -1,0 +1,125 @@
+/* Estilos exactos basados en la interfaz de señales SMC */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+  --bg-dark: #080c14;
+  --bg-card: #0d131f;
+  --bg-subcard: #131b2c;
+  --border-subtle: #1c273c;
+  --gold-accent: #f59e0b;
+  --gold-bg: rgba(245, 158, 11, 0.08);
+  --gold-border: rgba(245, 158, 11, 0.3);
+  --green-accent: #10b981;
+  --red-accent: #ef4444;
+  --cyan-accent: #06b6d4;
+  --text-white: #f8fafc;
+  --text-muted: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: 100vh;
+  padding: 24px 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.app-container {
+  width: 100%;
+  max-width: 580px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Card base */
+.card-box {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+}
+
+/* Custom Alert Card */
+.alert-card-gold {
+  background: var(--gold-bg);
+  border: 1px solid var(--gold-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+/* Clickable Copy Pill values inside signal cards */
+.metric-pill-copy {
+  background: var(--bg-subcard);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 10px;
+  text-align: center;
+  flex: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.metric-pill-copy:hover {
+  background: #1c273e;
+  border-color: #3b82f6;
+  transform: translateY(-1px);
+}
+
+.metric-pill-copy:active {
+  transform: scale(0.96);
+}
+
+.tag-pill {
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fcd34d;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* Power button */
+.power-btn-active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.power-btn-inactive {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+/* Table styles */
+.crypto-table-row {
+  border-bottom: 1px solid #141c2c;
+  transition: background 0.15s ease;
+}
+
+.crypto-table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.crypto-table-row:last-child {
+  border-bottom: none;
+}
+
+/* Toast */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+}
