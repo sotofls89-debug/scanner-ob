@@ -81,10 +81,12 @@ class BinanceTrade {
       throw new Error('API Keys no configuradas. Ve a ⚙️ Configurar API.');
     }
 
+    const apiKey = this.getApiKey();
     const timestamp = Date.now();
-    const allParams = { ...params, timestamp };
-    const qs        = Object.entries(allParams).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    const allParams = { ...params, apiKey, timestamp };
+    const qs = Object.entries(allParams).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
     const signature = await this.sign(qs);
+    const fullPayload = `${qs}&signature=${signature}`;
 
     const isDemo = this.isDemo();
     const isFile = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
@@ -92,34 +94,44 @@ class BinanceTrade {
     const targetHost  = isDemo ? 'testnet.binancefuture.com' : 'fapi.binance.com';
     const directBase  = this.getBaseUrl();
 
-    const apiKey = this.getApiKey();
-    const directUrl = `${directBase}${path}?${qs}&signature=${signature}`;
-    const netlifyProxyUrl = `${proxyPrefix}${path}?${qs}&signature=${signature}`;
-    const localProxyUrl = `http://localhost:3000${proxyPrefix}${path}?${qs}&signature=${signature}`;
-
-    const candidateUrls = isFile ? [
-      localProxyUrl,
-      directUrl,
-      netlifyProxyUrl
-    ] : [
-      directUrl,
-      localProxyUrl,
-      netlifyProxyUrl
-    ];
-
     let data = null;
     let isSuccess = false;
     let lastStatusCode = 0;
-    let lastErrorMsg = '';
 
-    for (const url of candidateUrls) {
+    // 1. Intento Directo Nativo Simple Request (CORS universal sin preflight OPTIONS)
+    try {
+      let fetchUrl = `${directBase}${path}`;
+      const fetchOptions = { method };
+
+      if (method === 'GET' || method === 'DELETE') {
+        fetchUrl += `?${fullPayload}`;
+      } else {
+        fetchOptions.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        fetchOptions.body = fullPayload;
+      }
+
+      const res = await fetch(fetchUrl, fetchOptions);
+      lastStatusCode = res.status;
+      const text = await res.text();
+
+      if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        try {
+          data = JSON.parse(text);
+          isSuccess = true;
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('[Trade] Intento directo sin headers falló:', err.message);
+    }
+
+    // 2. Intento Directo con Header X-MBX-APIKEY
+    if (!isSuccess) {
       try {
-        const reqHeaders = { 'X-MBX-APIKEY': apiKey };
-        if (url.includes('localhost:3000')) {
-          reqHeaders['X-Target-Host'] = targetHost;
-        }
-
-        const res = await fetch(url, { method, headers: reqHeaders });
+        const fetchUrl = `${directBase}${path}?${fullPayload}`;
+        const res = await fetch(fetchUrl, {
+          method,
+          headers: { 'X-MBX-APIKEY': apiKey }
+        });
         lastStatusCode = res.status;
         const text = await res.text();
 
@@ -127,13 +139,31 @@ class BinanceTrade {
           try {
             data = JSON.parse(text);
             isSuccess = true;
-            break;
           } catch (e) {}
         }
       } catch (err) {
-        lastErrorMsg = err.message;
-        console.warn(`[Trade] Intento con ${url} falló:`, err.message);
+        console.warn('[Trade] Intento con headers falló:', err.message);
       }
+    }
+
+    // 3. Intento Localhost Proxy (si se ejecuta en entorno local)
+    if (!isSuccess && isFile) {
+      try {
+        const localUrl = `http://localhost:3000${proxyPrefix}${path}?${fullPayload}`;
+        const res = await fetch(localUrl, {
+          method,
+          headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost }
+        });
+        lastStatusCode = res.status;
+        const text = await res.text();
+
+        if (text && !text.trim().startsWith('<')) {
+          try {
+            data = JSON.parse(text);
+            isSuccess = true;
+          } catch (e) {}
+        }
+      } catch (err) {}
     }
 
     if (!isSuccess || !data) {
