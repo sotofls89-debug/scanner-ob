@@ -1217,11 +1217,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-reset-tracker')?.addEventListener('click', () => {
-    if (confirm('¿Deseas reiniciar las estadísticas y limpiar el estado para auditar limpiamente desde cero?')) {
+    if (confirm('¿Deseas reiniciar el contador numérico de trades a cero? (El aprendizaje adaptativo y protecciones de mercado se conservarán al 100%)')) {
       tradeTracker.trades = [];
-      tradeTracker.memory = {};
       tradeTracker.saveTrades();
-      tradeTracker.saveMemory();
+      // NOTA: tradeTracker.memory se preserva intacto para no perder la inteligencia aprendida
       scanner.userExecutedTrades = [];
       scanner.dismissedSignals = new Set();
       scanner.saveUserExecutedTrades();
@@ -1230,14 +1229,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window._cloudSync) {
         window._cloudSync.pushToCloud({
           trades: [],
-          memory: {},
+          memory: tradeTracker.memory,
           syncPayload: { userTrades: [], dismissed: [] },
           userCapital,
           userRiskPct,
           filterMode: smcDetector.filterMode
         });
       }
-      showToast('Estadísticas y órdenes reiniciadas limpiamente', 'success');
+      showToast('🔢 Contador numérico reiniciado a 0 (Aprendizaje adaptativo conservado)', 'success');
       renderApp(scanner.getAllResults());
     }
   });
