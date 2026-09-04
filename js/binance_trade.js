@@ -18,56 +18,47 @@ class BinanceTrade {
   loadConfig() {
     try {
       const raw = localStorage.getItem(this.storageKey);
-      const cfg = raw ? JSON.parse(raw) : this.defaultConfig();
-      // Si el usuario configuró claves reales pero no de demo, activar modo real automáticamente
-      if (cfg.mode === 'demo' && (!cfg.demoKey || cfg.demoKey.length < 10) && cfg.realKey && cfg.realKey.length > 10) {
-        cfg.mode = 'real';
-      }
-      return cfg;
+      const cfg = raw ? JSON.parse(raw) : {};
+      const key = (cfg.apiKey || cfg.realKey || cfg.demoKey || '').trim().replace(/\s+/g, '');
+      const secret = (cfg.apiSecret || cfg.realSecret || cfg.demoSecret || '').trim().replace(/\s+/g, '');
+      return { apiKey: key, apiSecret: secret, realKey: key, realSecret: secret };
     } catch (e) {
-      return this.defaultConfig();
+      return { apiKey: '', apiSecret: '', realKey: '', realSecret: '' };
     }
   }
 
   defaultConfig() {
-    return { mode: 'real', demoKey: '', demoSecret: '', realKey: '', realSecret: '' };
+    return { apiKey: '', apiSecret: '', realKey: '', realSecret: '' };
   }
 
   saveConfig(cfg) {
-    this.config = { ...this.loadConfig(), ...cfg };
+    const current = this.loadConfig();
+    const key = (cfg.apiKey || cfg.realKey || cfg.demoKey || current.apiKey || '').trim().replace(/\s+/g, '');
+    const secret = (cfg.apiSecret || cfg.realSecret || cfg.demoSecret || current.apiSecret || '').trim().replace(/\s+/g, '');
+    this.config = { apiKey: key, apiSecret: secret, realKey: key, realSecret: secret };
     localStorage.setItem(this.storageKey, JSON.stringify(this.config));
   }
 
   isConfigured() {
-    this.config = this.loadConfig();
-    const key    = this.config.mode === 'demo' ? this.config.demoKey    : this.config.realKey;
-    const secret = this.config.mode === 'demo' ? this.config.demoSecret : this.config.realSecret;
-    return key && key.length > 10 && secret && secret.length > 10;
+    const cfg = this.loadConfig();
+    return Boolean(cfg.apiKey && cfg.apiKey.length > 10 && cfg.apiSecret && cfg.apiSecret.length > 10);
   }
 
   isDemo() {
-    this.config = this.loadConfig();
-    return this.config.mode === 'demo';
+    return false;
   }
 
-  // ─── Networking ─────────────────────────────────────────────────────────────
+  // ─── Networking Directo a Binance Futuros ────────────────────────────────────
 
   getBaseUrl() {
-    this.config = this.loadConfig();
-    return this.config.mode === 'demo'
-      ? 'https://testnet.binancefuture.com'
-      : 'https://fapi.binance.com';
+    return 'https://fapi.binance.com';
   }
 
   getApiKey()  {
-    this.config = this.loadConfig();
-    const raw = this.config.mode === 'demo' ? this.config.demoKey : this.config.realKey;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.loadConfig().apiKey;
   }
   getSecret()  {
-    this.config = this.loadConfig();
-    const raw = this.config.mode === 'demo' ? this.config.demoSecret : this.config.realSecret;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.loadConfig().apiSecret;
   }
 
   async sign(queryString) {
