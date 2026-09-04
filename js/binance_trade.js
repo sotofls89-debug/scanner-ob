@@ -18,18 +18,23 @@ class BinanceTrade {
   loadConfig() {
     try {
       const raw = localStorage.getItem(this.storageKey);
-      return raw ? JSON.parse(raw) : this.defaultConfig();
+      const cfg = raw ? JSON.parse(raw) : this.defaultConfig();
+      // Si el usuario configuró claves reales pero no de demo, activar modo real automáticamente
+      if (cfg.mode === 'demo' && (!cfg.demoKey || cfg.demoKey.length < 10) && cfg.realKey && cfg.realKey.length > 10) {
+        cfg.mode = 'real';
+      }
+      return cfg;
     } catch (e) {
       return this.defaultConfig();
     }
   }
 
   defaultConfig() {
-    return { mode: 'demo', demoKey: '', demoSecret: '', realKey: '', realSecret: '' };
+    return { mode: 'real', demoKey: '', demoSecret: '', realKey: '', realSecret: '' };
   }
 
   saveConfig(cfg) {
-    this.config = { ...this.config, ...cfg };
+    this.config = { ...this.loadConfig(), ...cfg };
     localStorage.setItem(this.storageKey, JSON.stringify(this.config));
   }
 

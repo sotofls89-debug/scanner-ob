@@ -4,7 +4,7 @@
  */
 
 // ⚙️ Versión del caché — se actualiza automáticamente con el script bump-version.js
-const CACHE_VERSION = 'v20260904-1357';
+const CACHE_VERSION = 'v20260904-1400';
 const CACHE_NAME = `smc-scanner-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [

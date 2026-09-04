@@ -36,7 +36,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260904-1357">
+  <link rel="stylesheet" href="styles.css?v=20260904-1400">
 </head>
 <body class="bg-bgDark text-white select-none">
 
@@ -456,9 +456,19 @@
       <div class="flex items-center justify-between">
         <div>
           <h3 class="font-extrabold text-sm text-white" id="confirm-trade-title">Confirmar Orden</h3>
-          <p class="text-[11px] text-gray-400" id="confirm-trade-mode-label">Modo: DEMO</p>
+          <p class="text-[11px] text-gray-400" id="confirm-trade-mode-label">Modo: REAL</p>
         </div>
         <button id="btn-close-confirm" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+
+      <!-- Selector de Modo dentro del modal de Confirmación -->
+      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
+        <button type="button" id="btn-ct-mode-real" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 bg-rose-600/25 text-rose-300 border border-rose-500/50 shadow-sm">
+          <span>🔴</span> Modo REAL
+        </button>
+        <button type="button" id="btn-ct-mode-demo" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 text-gray-400 hover:text-white">
+          <span>🟡</span> Modo DEMO
+        </button>
       </div>
 
       <!-- Resumen de la orden -->
@@ -565,13 +575,13 @@
 
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260904-1357"></script>
-  <script src="js/trade_tracker.js?v=20260904-1357"></script>
-  <script src="js/smc_detector.js?v=20260904-1357"></script>
-  <script src="js/scanner.js?v=20260904-1357"></script>
-  <script src="js/binance_trade.js?v=20260904-1357"></script>
-  <script src="js/cloud_sync.js?v=20260904-1357"></script>
-  <script src="js/app.js?v=20260904-1357"></script>
+  <script src="js/binance_api.js?v=20260904-1400"></script>
+  <script src="js/trade_tracker.js?v=20260904-1400"></script>
+  <script src="js/smc_detector.js?v=20260904-1400"></script>
+  <script src="js/scanner.js?v=20260904-1400"></script>
+  <script src="js/binance_trade.js?v=20260904-1400"></script>
+  <script src="js/cloud_sync.js?v=20260904-1400"></script>
+  <script src="js/app.js?v=20260904-1400"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>

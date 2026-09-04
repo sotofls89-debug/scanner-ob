@@ -1122,11 +1122,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     pendingTradeSignal = { ...signal };
-    const isDemo = binanceTrade.isDemo();
-    const pos    = calculatePosition(signal.entry, signal.riskPercent);
+    const pos = calculatePosition(signal.entry, signal.riskPercent);
 
-    document.getElementById('confirm-trade-title').textContent      = `Ejecutar ${signal.type} en ${signal.symbol}`;
-    document.getElementById('confirm-trade-mode-label').textContent = isDemo ? '🟡 Modo DEMO (Testnet)' : '🔴 Modo REAL — Dinero Real';
+    document.getElementById('confirm-trade-title').textContent = `Ejecutar ${signal.type} en ${signal.symbol}`;
     document.getElementById('ct-symbol').textContent = signal.symbol;
     document.getElementById('ct-type').textContent   = signal.type;
     document.getElementById('ct-type').className     = `font-bold ${signal.type === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`;
@@ -1135,6 +1133,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ct-tp').textContent     = formatPrice(signal.takeProfit, signal.symbol);
     document.getElementById('ct-qty').textContent    = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
     document.getElementById('ct-lev').textContent    = pos.suggestedLeverage;
+
+    updateConfirmModalUI();
+    document.getElementById('modal-confirm-trade')?.classList.remove('hidden');
+  }
+
+  function updateConfirmModalUI() {
+    const isDemo = binanceTrade.isDemo();
+    const modeLabel = document.getElementById('confirm-trade-mode-label');
+    if (modeLabel) modeLabel.textContent = isDemo ? '🟡 Modo DEMO (Testnet)' : '🔴 Modo REAL — Dinero Real';
+
+    const btnCtReal = document.getElementById('btn-ct-mode-real');
+    const btnCtDemo = document.getElementById('btn-ct-mode-demo');
+    if (btnCtReal) {
+      btnCtReal.className = `flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+        !isDemo ? 'bg-rose-600/25 text-rose-300 border border-rose-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+      }`;
+    }
+    if (btnCtDemo) {
+      btnCtDemo.className = `flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+        isDemo ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+      }`;
+    }
 
     const warning = document.getElementById('ct-real-warning');
     if (warning) {
@@ -1146,10 +1166,35 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirmBtn) {
       confirmBtn.className = `flex-1 py-2 ${isDemo ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-rose-600 hover:bg-rose-500 text-white'} rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2`;
     }
-    document.getElementById('confirm-btn-label').textContent = isDemo ? 'Ejecutar en DEMO' : '⚠️ Ejecutar REAL';
-
-    document.getElementById('modal-confirm-trade')?.classList.remove('hidden');
+    const label = document.getElementById('confirm-btn-label');
+    if (label) label.textContent = isDemo ? 'Ejecutar en DEMO' : '⚠️ Ejecutar REAL';
   }
+
+  document.getElementById('btn-ct-mode-real')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    binanceTrade.saveConfig({ mode: 'real' });
+    updateConfirmModalUI();
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+    if (btnModeToggle) btnModeToggle.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none bg-rose-600/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-500/10';
+    if (modeIcon) modeIcon.textContent = '🔴';
+    if (modeLabel) modeLabel.textContent = 'REAL';
+    showToast('🔴 Modo REAL activado para esta orden', 'info');
+  });
+
+  document.getElementById('btn-ct-mode-demo')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    binanceTrade.saveConfig({ mode: 'demo' });
+    updateConfirmModalUI();
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+    if (btnModeToggle) btnModeToggle.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none bg-yellow-500/15 border-yellow-500/40 text-yellow-300 shadow-sm shadow-yellow-500/10';
+    if (modeIcon) modeIcon.textContent = '🟡';
+    if (modeLabel) modeLabel.textContent = 'DEMO';
+    showToast('🟡 Modo DEMO activado para esta orden', 'info');
+  });
 
   document.getElementById('btn-close-confirm')?.addEventListener('click', () => {
     document.getElementById('modal-confirm-trade')?.classList.add('hidden');
