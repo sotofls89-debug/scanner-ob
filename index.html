@@ -36,7 +36,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260904-1406">
+  <link rel="stylesheet" href="styles.css?v=20260904-1411">
 </head>
 <body class="bg-bgDark text-white select-none">
 
@@ -68,10 +68,17 @@
       </div>
 
       <div class="flex items-center gap-2">
+        <!-- Toggle Demo / Real -->
+        <button id="btn-mode-toggle" title="Cambiar entre modo Demo y Real"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 bg-yellow-500/15 border-yellow-500/40 text-yellow-300">
+          <span id="mode-icon">🟡</span>
+          <span id="mode-label">DEMO</span>
+        </button>
+
         <!-- Botón API Keys -->
         <button id="btn-open-api" title="Configurar API Keys de Binance"
-          class="bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95">
-          <span>🔑</span> API Binance
+          class="bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95">
+          <span>🔑</span> API
         </button>
 
         <!-- Botón Sincronización en la Nube -->
@@ -362,7 +369,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════ MODAL: API KEYS BINANCE ═══════════════ -->
+  <!-- ═══════════════ MODAL: API KEYS ═══════════════ -->
   <div id="modal-api-settings" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
     <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4">
       
@@ -370,24 +377,50 @@
         <div class="flex items-center gap-2">
           <span class="text-xl">🔑</span>
           <div>
-            <h3 class="font-extrabold text-sm text-white">Claves API de Binance Futuros</h3>
-            <p class="text-[11px] text-gray-400">Guardadas solo en tu teléfono · 100% Privadas</p>
+            <h3 class="font-extrabold text-sm text-white">API Keys de Binance Futuros</h3>
+            <p class="text-[11px] text-gray-400">Guardadas solo en tu dispositivo · Nunca en la nube</p>
           </div>
         </div>
         <button id="btn-close-api" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
       </div>
 
-      <!-- CAMPOS API -->
-      <div class="space-y-3 p-3.5 rounded-xl bg-bgDark border border-borderSubtle">
+      <!-- Selector de Modo Activo (DEMO vs REAL) -->
+      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
+        <button type="button" id="btn-api-modal-mode-demo" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>🟡</span> Modo DEMO
+        </button>
+        <button type="button" id="btn-api-modal-mode-real" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>🔴</span> Modo REAL
+        </button>
+      </div>
+
+      <!-- DEMO -->
+      <div id="box-demo-keys" class="space-y-2 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20">
+        <div class="text-[10px] uppercase font-black text-yellow-400 tracking-wider">🟡 Cuenta DEMO (Testnet)</div>
         <div>
-          <label class="text-[11px] font-bold text-gray-300 block mb-1">API Key de Binance:</label>
-          <input type="text" id="input-api-key" placeholder="Pega tu API Key aquí"
-            class="w-full bg-bgCard border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-emerald-500">
+          <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Demo:</label>
+          <input type="password" id="input-api-demo-key" placeholder="Pega tu API Key Demo aquí"
+            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-yellow-500">
         </div>
         <div>
-          <label class="text-[11px] font-bold text-gray-300 block mb-1">Secret Key de Binance:</label>
-          <input type="password" id="input-api-secret" placeholder="Pega tu Secret Key aquí"
-            class="w-full bg-bgCard border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-emerald-500">
+          <label class="text-[11px] font-semibold text-gray-400 block mb-1">Secret Key Demo:</label>
+          <input type="password" id="input-api-demo-secret" placeholder="Pega tu Secret Key Demo aquí"
+            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-yellow-500">
+        </div>
+      </div>
+
+      <!-- REAL -->
+      <div id="box-real-keys" class="space-y-2 p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
+        <div class="text-[10px] uppercase font-black text-rose-400 tracking-wider">🔴 Cuenta REAL (Futuros USDT-M)</div>
+        <div>
+          <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Real:</label>
+          <input type="password" id="input-api-real-key" placeholder="Pega tu API Key Real aquí"
+            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-rose-500">
+        </div>
+        <div>
+          <label class="text-[11px] font-semibold text-gray-400 block mb-1">Secret Key Real:</label>
+          <input type="password" id="input-api-real-secret" placeholder="Pega tu Secret Key Real aquí"
+            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-rose-500">
         </div>
       </div>
 
@@ -404,12 +437,12 @@
       </div>
 
       <div class="text-[10px] text-gray-500 leading-relaxed">
-        💡 En Binance → Gestión API → activa permisos de <strong class="text-gray-300">Futuros USDT-M</strong>.
+        ⚠️ En Binance → Gestión API → activa permisos de <strong class="text-gray-300">Futuros USDT-M</strong>.
       </div>
 
       <div class="flex justify-end pt-1 border-t border-borderSubtle">
-        <button id="btn-save-api" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/30 active:scale-95">
-          🔐 Guardar Claves de Binance
+        <button id="btn-save-api" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/30 active:scale-95 w-full">
+          🔐 Guardar Claves
         </button>
       </div>
     </div>
@@ -422,9 +455,19 @@
       <div class="flex items-center justify-between">
         <div>
           <h3 class="font-extrabold text-sm text-white" id="confirm-trade-title">Confirmar Orden</h3>
-          <p class="text-[11px] text-emerald-400 font-bold">Binance Futuros Oficial (1:3 RR)</p>
+          <p class="text-[11px] font-bold" id="confirm-trade-mode-label">Modo: DEMO</p>
         </div>
         <button id="btn-close-confirm" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+
+      <!-- Selector de Modo dentro del modal de Confirmación -->
+      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
+        <button type="button" id="btn-ct-mode-demo" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>🟡</span> Modo DEMO
+        </button>
+        <button type="button" id="btn-ct-mode-real" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+          <span>🔴</span> Modo REAL
+        </button>
       </div>
 
       <!-- Resumen de la orden -->
@@ -438,12 +481,17 @@
         <div class="flex justify-between"><span class="text-gray-400">Apalancamiento:</span><span class="font-mono font-bold text-white" id="ct-lev">-</span></div>
       </div>
 
+      <!-- Advertencia cuenta real -->
+      <div id="ct-real-warning" class="hidden rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 text-[11px] text-rose-300 font-semibold">
+        🔴 Estás en modo <strong>CUENTA REAL</strong>. Esta orden usará dinero real de tu cuenta de Binance Futuros.
+      </div>
+
       <div class="flex gap-2 pt-1 border-t border-borderSubtle">
         <button id="btn-cancel-trade" class="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95">
           Cancelar
         </button>
-        <button id="btn-confirm-trade" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30">
-          <span>⚡</span> <span id="confirm-btn-label">Ejecutar en Binance</span>
+        <button id="btn-confirm-trade" class="flex-1 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg">
+          <span>⚡</span> <span id="confirm-btn-label">Ejecutar Orden</span>
         </button>
       </div>
     </div>
@@ -528,13 +576,13 @@
 
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260904-1406"></script>
-  <script src="js/trade_tracker.js?v=20260904-1406"></script>
-  <script src="js/smc_detector.js?v=20260904-1406"></script>
-  <script src="js/scanner.js?v=20260904-1406"></script>
-  <script src="js/binance_trade.js?v=20260904-1406"></script>
-  <script src="js/cloud_sync.js?v=20260904-1406"></script>
-  <script src="js/app.js?v=20260904-1406"></script>
+  <script src="js/binance_api.js?v=20260904-1411"></script>
+  <script src="js/trade_tracker.js?v=20260904-1411"></script>
+  <script src="js/smc_detector.js?v=20260904-1411"></script>
+  <script src="js/scanner.js?v=20260904-1411"></script>
+  <script src="js/binance_trade.js?v=20260904-1411"></script>
+  <script src="js/cloud_sync.js?v=20260904-1411"></script>
+  <script src="js/app.js?v=20260904-1411"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>

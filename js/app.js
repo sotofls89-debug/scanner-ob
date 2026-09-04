@@ -761,13 +761,82 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnOpenAPI = document.getElementById('btn-open-api');
     const btnCloseAPI = document.getElementById('btn-close-api');
     const btnSaveAPI = document.getElementById('btn-save-api');
-    const inputApiKey = document.getElementById('input-api-key');
-    const inputApiSecret = document.getElementById('input-api-secret');
+    const inputDemoKey = document.getElementById('input-api-demo-key');
+    const inputDemoSecret = document.getElementById('input-api-demo-secret');
+    const inputRealKey = document.getElementById('input-api-real-key');
+    const inputRealSecret = document.getElementById('input-api-real-secret');
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+    const btnModalDemo = document.getElementById('btn-api-modal-mode-demo');
+    const btnModalReal = document.getElementById('btn-api-modal-mode-real');
+    const boxDemo = document.getElementById('box-demo-keys');
+    const boxReal = document.getElementById('box-real-keys');
+
+    function updateModeUI() {
+      const isDemo = binanceTrade.isDemo();
+      if (btnModeToggle) {
+        btnModeToggle.className = `flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none ${
+          isDemo ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300 shadow-sm shadow-yellow-500/10' : 'bg-rose-600/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-500/10'
+        }`;
+      }
+      if (modeIcon) modeIcon.textContent = isDemo ? '🟡' : '🔴';
+      if (modeLabel) modeLabel.textContent = isDemo ? 'DEMO' : 'REAL';
+
+      if (btnModalDemo) {
+        btnModalDemo.className = `flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          isDemo ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+        }`;
+      }
+      if (btnModalReal) {
+        btnModalReal.className = `flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          !isDemo ? 'bg-rose-600/25 text-rose-300 border border-rose-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+        }`;
+      }
+
+      if (boxDemo) {
+        boxDemo.className = `space-y-2 p-3 rounded-xl transition-all ${
+          isDemo ? 'bg-yellow-500/10 border-2 border-yellow-500/50 shadow-md' : 'bg-yellow-500/5 border border-yellow-500/20 opacity-60'
+        }`;
+      }
+      if (boxReal) {
+        boxReal.className = `space-y-2 p-3 rounded-xl transition-all ${
+          !isDemo ? 'bg-rose-500/10 border-2 border-rose-500/50 shadow-md' : 'bg-rose-500/5 border border-rose-500/20 opacity-60'
+        }`;
+      }
+    }
+
+    updateModeUI();
+
+    function setAppMode(targetMode) {
+      binanceTrade.saveConfig({ mode: targetMode });
+      updateModeUI();
+      showToast(targetMode === 'real' ? '🔴 Modo REAL activado' : '🟡 Modo DEMO activado', 'info');
+    }
+
+    btnModeToggle?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const current = binanceTrade.isDemo();
+      setAppMode(current ? 'real' : 'demo');
+    });
+
+    btnModalDemo?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setAppMode('demo');
+    });
+
+    btnModalReal?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setAppMode('real');
+    });
 
     btnOpenAPI?.addEventListener('click', () => {
       const cfg = binanceTrade.loadConfig();
-      if (inputApiKey) inputApiKey.value = cfg.apiKey || '';
-      if (inputApiSecret) inputApiSecret.value = cfg.apiSecret || '';
+      if (inputDemoKey) inputDemoKey.value = cfg.demoKey || '';
+      if (inputDemoSecret) inputDemoSecret.value = cfg.demoSecret || '';
+      if (inputRealKey) inputRealKey.value = cfg.realKey || '';
+      if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
+      updateModeUI();
       apiModal?.classList.remove('hidden');
     });
 
@@ -780,10 +849,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnSaveAPI?.addEventListener('click', () => {
-      const key = inputApiKey ? inputApiKey.value.trim() : '';
-      const secret = inputApiSecret ? inputApiSecret.value.trim() : '';
-      binanceTrade.saveConfig({ apiKey: key, apiSecret: secret });
+      binanceTrade.saveConfig({
+        demoKey: inputDemoKey ? inputDemoKey.value.trim() : '',
+        demoSecret: inputDemoSecret ? inputDemoSecret.value.trim() : '',
+        realKey: inputRealKey ? inputRealKey.value.trim() : '',
+        realSecret: inputRealSecret ? inputRealSecret.value.trim() : ''
+      });
       apiModal?.classList.add('hidden');
+      updateModeUI();
       showToast('🔐 Claves API de Binance guardadas con éxito', 'success');
     });
 
@@ -1046,12 +1119,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─────────────────────────────────────────────────────────────────────
   function openTradeConfirmModal(signal) {
     if (!binanceTrade.isConfigured()) {
-      showToast('🔑 Ingresa tus claves API de Binance en la ventana que se abrió', 'danger');
+      const isDemo = binanceTrade.isDemo();
+      showToast(`🔑 Configura tus claves de Binance (${isDemo ? 'DEMO' : 'REAL'}) en la ventana que se abrió`, 'danger');
       const cfg = binanceTrade.loadConfig();
-      const inputApiKey = document.getElementById('input-api-key');
-      const inputApiSecret = document.getElementById('input-api-secret');
-      if (inputApiKey) inputApiKey.value = cfg.apiKey || '';
-      if (inputApiSecret) inputApiSecret.value = cfg.apiSecret || '';
+      const inputDemoKey = document.getElementById('input-api-demo-key');
+      const inputDemoSecret = document.getElementById('input-api-demo-secret');
+      const inputRealKey = document.getElementById('input-api-real-key');
+      const inputRealSecret = document.getElementById('input-api-real-secret');
+      if (inputDemoKey) inputDemoKey.value = cfg.demoKey || '';
+      if (inputDemoSecret) inputDemoSecret.value = cfg.demoSecret || '';
+      if (inputRealKey) inputRealKey.value = cfg.realKey || '';
+      if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
       document.getElementById('modal-api-settings')?.classList.remove('hidden');
       return;
     }
@@ -1069,11 +1147,72 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ct-qty').textContent    = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
     document.getElementById('ct-lev').textContent    = pos.suggestedLeverage;
 
-    const label = document.getElementById('confirm-btn-label');
-    if (label) label.textContent = 'Ejecutar en Binance';
-
+    updateConfirmModalUI();
     document.getElementById('modal-confirm-trade')?.classList.remove('hidden');
   }
+
+  function updateConfirmModalUI() {
+    const isDemo = binanceTrade.isDemo();
+    const modeLabel = document.getElementById('confirm-trade-mode-label');
+    if (modeLabel) {
+      modeLabel.textContent = isDemo ? 'Modo: 🟡 DEMO (Testnet)' : 'Modo: 🔴 REAL (Dinero Real)';
+      modeLabel.className = `text-[11px] font-black ${isDemo ? 'text-yellow-400' : 'text-rose-400'}`;
+    }
+
+    const btnCtDemo = document.getElementById('btn-ct-mode-demo');
+    const btnCtReal = document.getElementById('btn-ct-mode-real');
+    if (btnCtDemo) {
+      btnCtDemo.className = `flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+        isDemo ? 'bg-yellow-500/25 text-yellow-300 border border-yellow-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+      }`;
+    }
+    if (btnCtReal) {
+      btnCtReal.className = `flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+        !isDemo ? 'bg-rose-600/25 text-rose-300 border border-rose-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+      }`;
+    }
+
+    const warning = document.getElementById('ct-real-warning');
+    if (warning) {
+      if (isDemo) warning.classList.add('hidden');
+      else        warning.classList.remove('hidden');
+    }
+
+    const confirmBtn = document.getElementById('btn-confirm-trade');
+    if (confirmBtn) {
+      confirmBtn.className = `flex-1 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg ${
+        isDemo ? 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-500/20' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+      }`;
+    }
+    const label = document.getElementById('confirm-btn-label');
+    if (label) label.textContent = isDemo ? '⚡ Ejecutar en DEMO' : '⚠️ Ejecutar con DINERO REAL';
+  }
+
+  document.getElementById('btn-ct-mode-demo')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    binanceTrade.saveConfig({ mode: 'demo' });
+    updateConfirmModalUI();
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+    if (btnModeToggle) btnModeToggle.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none bg-yellow-500/15 border-yellow-500/40 text-yellow-300 shadow-sm shadow-yellow-500/10';
+    if (modeIcon) modeIcon.textContent = '🟡';
+    if (modeLabel) modeLabel.textContent = 'DEMO';
+    showToast('🟡 Modo DEMO activado para esta orden', 'info');
+  });
+
+  document.getElementById('btn-ct-mode-real')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    binanceTrade.saveConfig({ mode: 'real' });
+    updateConfirmModalUI();
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+    if (btnModeToggle) btnModeToggle.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none bg-rose-600/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-500/10';
+    if (modeIcon) modeIcon.textContent = '🔴';
+    if (modeLabel) modeLabel.textContent = 'REAL';
+    showToast('🔴 Modo REAL activado para esta orden', 'info');
+  });
 
   document.getElementById('btn-close-confirm')?.addEventListener('click', () => {
     document.getElementById('modal-confirm-trade')?.classList.add('hidden');

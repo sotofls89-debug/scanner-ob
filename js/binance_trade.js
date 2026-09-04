@@ -18,47 +18,52 @@ class BinanceTrade {
   loadConfig() {
     try {
       const raw = localStorage.getItem(this.storageKey);
-      const cfg = raw ? JSON.parse(raw) : {};
-      const key = (cfg.apiKey || cfg.realKey || cfg.demoKey || '').trim().replace(/\s+/g, '');
-      const secret = (cfg.apiSecret || cfg.realSecret || cfg.demoSecret || '').trim().replace(/\s+/g, '');
-      return { apiKey: key, apiSecret: secret, realKey: key, realSecret: secret };
+      return raw ? JSON.parse(raw) : this.defaultConfig();
     } catch (e) {
-      return { apiKey: '', apiSecret: '', realKey: '', realSecret: '' };
+      return this.defaultConfig();
     }
   }
 
   defaultConfig() {
-    return { apiKey: '', apiSecret: '', realKey: '', realSecret: '' };
+    return { mode: 'demo', demoKey: '', demoSecret: '', realKey: '', realSecret: '' };
   }
 
   saveConfig(cfg) {
     const current = this.loadConfig();
-    const key = (cfg.apiKey || cfg.realKey || cfg.demoKey || current.apiKey || '').trim().replace(/\s+/g, '');
-    const secret = (cfg.apiSecret || cfg.realSecret || cfg.demoSecret || current.apiSecret || '').trim().replace(/\s+/g, '');
-    this.config = { apiKey: key, apiSecret: secret, realKey: key, realSecret: secret };
+    this.config = { ...current, ...cfg };
     localStorage.setItem(this.storageKey, JSON.stringify(this.config));
   }
 
   isConfigured() {
-    const cfg = this.loadConfig();
-    return Boolean(cfg.apiKey && cfg.apiKey.length > 10 && cfg.apiSecret && cfg.apiSecret.length > 10);
+    this.config = this.loadConfig();
+    const isDemo = this.isDemo();
+    const key    = isDemo ? this.config.demoKey    : this.config.realKey;
+    const secret = isDemo ? this.config.demoSecret : this.config.realSecret;
+    return Boolean(key && key.length > 10 && secret && secret.length > 10);
   }
 
   isDemo() {
-    return false;
+    this.config = this.loadConfig();
+    return this.config.mode === 'demo';
   }
 
-  // ─── Networking Directo a Binance Futuros ────────────────────────────────────
+  // ─── Networking ─────────────────────────────────────────────────────────────
 
   getBaseUrl() {
-    return 'https://fapi.binance.com';
+    return this.isDemo()
+      ? 'https://testnet.binancefuture.com'
+      : 'https://fapi.binance.com';
   }
 
   getApiKey()  {
-    return this.loadConfig().apiKey;
+    this.config = this.loadConfig();
+    const raw = this.isDemo() ? this.config.demoKey : this.config.realKey;
+    return (raw || '').trim().replace(/\s+/g, '');
   }
   getSecret()  {
-    return this.loadConfig().apiSecret;
+    this.config = this.loadConfig();
+    const raw = this.isDemo() ? this.config.demoSecret : this.config.realSecret;
+    return (raw || '').trim().replace(/\s+/g, '');
   }
 
   async sign(queryString) {
