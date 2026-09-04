@@ -756,6 +756,68 @@ document.addEventListener('DOMContentLoaded', () => {
       scanner.scanAll();
     });
 
+    // ─── Modal de Configuración de API Keys (Binance Futuros) ───
+    const apiModal = document.getElementById('modal-api-settings');
+    const btnOpenAPI = document.getElementById('btn-open-api');
+    const btnCloseAPI = document.getElementById('btn-close-api');
+    const btnSaveAPI = document.getElementById('btn-save-api');
+    const inputDemoKey = document.getElementById('input-api-demo-key');
+    const inputDemoSecret = document.getElementById('input-api-demo-secret');
+    const inputRealKey = document.getElementById('input-api-real-key');
+    const inputRealSecret = document.getElementById('input-api-real-secret');
+    const btnModeToggle = document.getElementById('btn-mode-toggle');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeLabel = document.getElementById('mode-label');
+
+    function updateModeUI() {
+      const isDemo = binanceTrade.isDemo();
+      if (btnModeToggle) {
+        btnModeToggle.className = `flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 ${
+          isDemo ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300' : 'bg-rose-600/20 border-rose-500/40 text-rose-300'
+        }`;
+      }
+      if (modeIcon) modeIcon.textContent = isDemo ? '🟡' : '🔴';
+      if (modeLabel) modeLabel.textContent = isDemo ? 'DEMO' : 'REAL';
+    }
+
+    updateModeUI();
+
+    btnModeToggle?.addEventListener('click', () => {
+      const current = binanceTrade.isDemo();
+      binanceTrade.saveConfig({ mode: current ? 'real' : 'demo' });
+      updateModeUI();
+      showToast(current ? '🔴 Modo REAL activado' : '🟡 Modo DEMO activado', 'info');
+    });
+
+    btnOpenAPI?.addEventListener('click', () => {
+      const cfg = binanceTrade.config || binanceTrade.loadConfig();
+      if (inputDemoKey) inputDemoKey.value = cfg.demoKey || '';
+      if (inputDemoSecret) inputDemoSecret.value = cfg.demoSecret || '';
+      if (inputRealKey) inputRealKey.value = cfg.realKey || '';
+      if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
+      apiModal?.classList.remove('hidden');
+    });
+
+    btnCloseAPI?.addEventListener('click', () => {
+      apiModal?.classList.add('hidden');
+    });
+
+    apiModal?.addEventListener('click', (e) => {
+      if (e.target === apiModal) apiModal.classList.add('hidden');
+    });
+
+    btnSaveAPI?.addEventListener('click', () => {
+      binanceTrade.saveConfig({
+        demoKey: inputDemoKey ? inputDemoKey.value.trim() : '',
+        demoSecret: inputDemoSecret ? inputDemoSecret.value.trim() : '',
+        realKey: inputRealKey ? inputRealKey.value.trim() : '',
+        realSecret: inputRealSecret ? inputRealSecret.value.trim() : ''
+      });
+      apiModal?.classList.add('hidden');
+      updateModeUI();
+      showToast('🔐 Claves API de Binance guardadas con éxito', 'success');
+    });
+
     const discordModal = document.getElementById('discord-modal');
     const btnOpenDiscord = document.getElementById('btn-open-discord');
     const btnCloseDiscord = document.getElementById('btn-close-discord');
@@ -1015,7 +1077,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─────────────────────────────────────────────────────────────────────
   function openTradeConfirmModal(signal) {
     if (!binanceTrade.isConfigured()) {
-      showToast('Primero configura tus API Keys (botón 🔑 API)', 'danger');
+      const isDemo = binanceTrade.isDemo();
+      showToast(`🔑 Configura tus claves de Binance (${isDemo ? 'DEMO' : 'REAL'}) en la ventana que se abrió`, 'danger');
+      const cfg = binanceTrade.config || binanceTrade.loadConfig();
+      const inputDemoKey = document.getElementById('input-api-demo-key');
+      const inputDemoSecret = document.getElementById('input-api-demo-secret');
+      const inputRealKey = document.getElementById('input-api-real-key');
+      const inputRealSecret = document.getElementById('input-api-real-secret');
+      if (inputDemoKey) inputDemoKey.value = cfg.demoKey || '';
+      if (inputDemoSecret) inputDemoSecret.value = cfg.demoSecret || '';
+      if (inputRealKey) inputRealKey.value = cfg.realKey || '';
+      if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
+      document.getElementById('modal-api-settings')?.classList.remove('hidden');
       return;
     }
 
