@@ -36,7 +36,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260904-1328">
+  <link rel="stylesheet" href="styles.css?v=20260904-1333">
 </head>
 <body class="bg-bgDark text-white select-none">
 
@@ -563,147 +563,15 @@
 
   <div id="toast-container"></div>
 
-  <!-- ═══ MODAL API + FILTROS: Script Independiente (funciona siempre) ═══ -->
-  <script>
-    (function() {
-      const STORAGE_KEY     = 'smc_api_config_v1';
-      const FILTER_MODE_KEY = 'smc_filter_mode';
-
-      function loadCfg() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { return {}; }
-      }
-      function saveCfg(update) {
-        const cfg = { ...loadCfg(), ...update };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
-      }
-
-      document.addEventListener('DOMContentLoaded', function() {
-        const modal   = document.getElementById('modal-api-settings');
-        const btnOpen = document.getElementById('btn-open-api');
-        const btnClose= document.getElementById('btn-close-api');
-        const btnSave = document.getElementById('btn-save-api');
-        const btnMode = document.getElementById('btn-mode-toggle');
-
-        // ─── Modo Demo/Real ───────────────────────────────────
-        function updateModeUI() {
-          const cfg    = loadCfg();
-          const isDemo = (cfg.mode || 'demo') === 'demo';
-          if (!btnMode) return;
-          const icon  = document.getElementById('mode-icon');
-          const label = document.getElementById('mode-label');
-          btnMode.className = isDemo
-            ? 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 bg-yellow-500/15 border-yellow-500/40 text-yellow-300'
-            : 'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 bg-rose-500/15 border-rose-500/40 text-rose-300';
-          if (icon)  icon.textContent  = isDemo ? '🟡' : '🔴';
-          if (label) label.textContent = isDemo ? 'DEMO' : 'REAL';
-        }
-
-        btnOpen && btnOpen.addEventListener('click', function() {
-          const cfg = loadCfg();
-          const f = function(id, val) {
-            const el = document.getElementById(id);
-            if (el) el.value = val ? '••••••••••••••••' : '';
-          };
-          f('input-api-demo-key',    cfg.demoKey);
-          f('input-api-demo-secret', cfg.demoSecret);
-          f('input-api-real-key',    cfg.realKey);
-          f('input-api-real-secret', cfg.realSecret);
-          if (modal) modal.classList.remove('hidden');
-        });
-
-        btnClose && btnClose.addEventListener('click', function() {
-          if (modal) modal.classList.add('hidden');
-        });
-
-        modal && modal.addEventListener('click', function(e) {
-          if (e.target === modal) modal.classList.add('hidden');
-        });
-
-        btnSave && btnSave.addEventListener('click', function() {
-          const g = function(id) {
-            const el = document.getElementById(id);
-            const v = el ? el.value.trim() : '';
-            return (v && !v.startsWith('•')) ? v : null;
-          };
-          const update = {};
-          const dk = g('input-api-demo-key');    if (dk) update.demoKey    = dk;
-          const ds = g('input-api-demo-secret'); if (ds) update.demoSecret = ds;
-          const rk = g('input-api-real-key');    if (rk) update.realKey    = rk;
-          const rs = g('input-api-real-secret'); if (rs) update.realSecret = rs;
-          saveCfg(update);
-          if (modal) modal.classList.add('hidden');
-          const t = document.createElement('div');
-          t.textContent = '🔐 API Keys guardadas en tu dispositivo';
-          t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:12px;font-size:12px;font-weight:700;z-index:9999;';
-          document.body.appendChild(t);
-          setTimeout(() => t.remove(), 3000);
-        });
-
-        btnMode && btnMode.addEventListener('click', function() {
-          const cfg = loadCfg();
-          const newMode = (cfg.mode || 'demo') === 'demo' ? 'real' : 'demo';
-          saveCfg({ mode: newMode });
-          updateModeUI();
-
-          const t = document.createElement('div');
-          t.textContent = newMode === 'real' ? '🔴 Modo cambiado a CUENTA REAL' : '🟡 Modo cambiado a CUENTA DEMO';
-          t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:${newMode === 'real' ? '#e11d48' : '#eab308'};color:${newMode === 'real' ? '#fff' : '#000'};padding:10px 20px;border-radius:12px;font-size:12px;font-weight:800;z-index:9999;box-shadow:0 10px 25px rgba(0,0,0,0.5);`;
-          document.body.appendChild(t);
-          setTimeout(() => t.remove(), 2500);
-        });
-
-        updateModeUI();
-
-        // ─── Botón Filtros: Estricto ↔ Suave ─────────────────
-        const filterBtn  = document.getElementById('btn-toggle-filters');
-        const filterText = document.getElementById('kpi-filter-mode');
-
-        // Restaurar modo guardado al cargar
-        const savedFilter = localStorage.getItem(FILTER_MODE_KEY) || 'estricto';
-        if (filterText) {
-          filterText.textContent = savedFilter;
-          filterText.className = savedFilter === 'estricto'
-            ? 'text-lg font-black text-emerald-400 mt-1 capitalize'
-            : 'text-lg font-black text-amber-400 mt-1 capitalize';
-        }
-
-        filterBtn && filterBtn.addEventListener('click', function() {
-          const current = localStorage.getItem(FILTER_MODE_KEY) || 'estricto';
-          const next    = current === 'estricto' ? 'suave' : 'estricto';
-          localStorage.setItem(FILTER_MODE_KEY, next);
-
-          if (filterText) {
-            filterText.textContent = next;
-            filterText.className = next === 'estricto'
-              ? 'text-lg font-black text-emerald-400 mt-1 capitalize'
-              : 'text-lg font-black text-amber-400 mt-1 capitalize';
-          }
-
-          // Notificar a smcDetector si ya está disponible
-          if (window._smcDetector && typeof window._smcDetector.setFilterMode === 'function') {
-            window._smcDetector.setFilterMode(next);
-          }
-
-          // Toast
-          const t = document.createElement('div');
-          t.textContent = `⚙️ Filtros cambiados a modo: ${next.toUpperCase()}`;
-          t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#6366f1;color:#fff;padding:10px 20px;border-radius:12px;font-size:12px;font-weight:700;z-index:9999;';
-          document.body.appendChild(t);
-          setTimeout(() => t.remove(), 3000);
-        });
-      });
-    })();
-  </script>
-
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260904-1328"></script>
-  <script src="js/trade_tracker.js?v=20260904-1328"></script>
-  <script src="js/smc_detector.js?v=20260904-1328"></script>
-  <script src="js/scanner.js?v=20260904-1328"></script>
-  <script src="js/binance_trade.js?v=20260904-1328"></script>
-  <script src="js/cloud_sync.js?v=20260904-1328"></script>
-  <script src="js/app.js?v=20260904-1328"></script>
+  <script src="js/binance_api.js?v=20260904-1333"></script>
+  <script src="js/trade_tracker.js?v=20260904-1333"></script>
+  <script src="js/smc_detector.js?v=20260904-1333"></script>
+  <script src="js/scanner.js?v=20260904-1333"></script>
+  <script src="js/binance_trade.js?v=20260904-1333"></script>
+  <script src="js/cloud_sync.js?v=20260904-1333"></script>
+  <script src="js/app.js?v=20260904-1333"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>
