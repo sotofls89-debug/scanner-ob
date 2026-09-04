@@ -768,25 +768,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnModeToggle = document.getElementById('btn-mode-toggle');
     const modeIcon = document.getElementById('mode-icon');
     const modeLabel = document.getElementById('mode-label');
+    const btnModalDemo = document.getElementById('btn-api-modal-mode-demo');
+    const btnModalReal = document.getElementById('btn-api-modal-mode-real');
 
     function updateModeUI() {
       const isDemo = binanceTrade.isDemo();
       if (btnModeToggle) {
-        btnModeToggle.className = `flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 ${
-          isDemo ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300' : 'bg-rose-600/20 border-rose-500/40 text-rose-300'
+        btnModeToggle.className = `flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all active:scale-95 cursor-pointer select-none ${
+          isDemo ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300 shadow-sm shadow-yellow-500/10' : 'bg-rose-600/20 border-rose-500/40 text-rose-300 shadow-sm shadow-rose-500/10'
         }`;
       }
       if (modeIcon) modeIcon.textContent = isDemo ? '🟡' : '🔴';
       if (modeLabel) modeLabel.textContent = isDemo ? 'DEMO' : 'REAL';
+
+      if (btnModalDemo) {
+        btnModalDemo.className = `flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          isDemo ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+        }`;
+      }
+      if (btnModalReal) {
+        btnModalReal.className = `flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          !isDemo ? 'bg-rose-600/25 text-rose-300 border border-rose-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
+        }`;
+      }
     }
 
     updateModeUI();
 
-    btnModeToggle?.addEventListener('click', () => {
+    function toggleMode(targetMode = null) {
       const current = binanceTrade.isDemo();
-      binanceTrade.saveConfig({ mode: current ? 'real' : 'demo' });
+      const newMode = targetMode || (current ? 'real' : 'demo');
+      binanceTrade.saveConfig({ mode: newMode });
       updateModeUI();
-      showToast(current ? '🔴 Modo REAL activado' : '🟡 Modo DEMO activado', 'info');
+      showToast(newMode === 'real' ? '🔴 Modo REAL activado' : '🟡 Modo DEMO activado', 'info');
+    }
+
+    btnModeToggle?.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleMode();
+    });
+
+    btnModalDemo?.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleMode('demo');
+    });
+
+    btnModalReal?.addEventListener('click', (e) => {
+      e.preventDefault();
+      toggleMode('real');
     });
 
     btnOpenAPI?.addEventListener('click', () => {

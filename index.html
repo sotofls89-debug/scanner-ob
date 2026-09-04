@@ -36,7 +36,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260904-1324">
+  <link rel="stylesheet" href="styles.css?v=20260904-1328">
 </head>
 <body class="bg-bgDark text-white select-none">
 
@@ -384,6 +384,16 @@
         <button id="btn-close-api" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
       </div>
 
+      <!-- Selector de Modo Activo (DEMO vs REAL) -->
+      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
+        <button type="button" id="btn-api-modal-mode-demo" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5">
+          <span>🟡</span> Modo DEMO
+        </button>
+        <button type="button" id="btn-api-modal-mode-real" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5">
+          <span>🔴</span> Modo REAL
+        </button>
+      </div>
+
       <!-- DEMO -->
       <div class="space-y-2 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20">
         <div class="text-[10px] uppercase font-black text-yellow-400 tracking-wider">🟡 Cuenta DEMO (Testnet)</div>
@@ -687,13 +697,13 @@
 
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260904-1324"></script>
-  <script src="js/trade_tracker.js?v=20260904-1324"></script>
-  <script src="js/smc_detector.js?v=20260904-1324"></script>
-  <script src="js/scanner.js?v=20260904-1324"></script>
-  <script src="js/binance_trade.js?v=20260904-1324"></script>
-  <script src="js/cloud_sync.js?v=20260904-1324"></script>
-  <script src="js/app.js?v=20260904-1324"></script>
+  <script src="js/binance_api.js?v=20260904-1328"></script>
+  <script src="js/trade_tracker.js?v=20260904-1328"></script>
+  <script src="js/smc_detector.js?v=20260904-1328"></script>
+  <script src="js/scanner.js?v=20260904-1328"></script>
+  <script src="js/binance_trade.js?v=20260904-1328"></script>
+  <script src="js/cloud_sync.js?v=20260904-1328"></script>
+  <script src="js/app.js?v=20260904-1328"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>
