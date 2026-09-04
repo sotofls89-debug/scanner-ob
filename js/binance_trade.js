@@ -56,11 +56,13 @@ class BinanceTrade {
 
   getApiKey()  {
     this.config = this.loadConfig();
-    return this.config.mode === 'demo' ? this.config.demoKey : this.config.realKey;
+    const raw = this.config.mode === 'demo' ? this.config.demoKey : this.config.realKey;
+    return (raw || '').trim().replace(/\s+/g, '');
   }
   getSecret()  {
     this.config = this.loadConfig();
-    return this.config.mode === 'demo' ? this.config.demoSecret : this.config.realSecret;
+    const raw = this.config.mode === 'demo' ? this.config.demoSecret : this.config.realSecret;
+    return (raw || '').trim().replace(/\s+/g, '');
   }
 
   async sign(queryString) {
