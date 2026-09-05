@@ -95,7 +95,6 @@ class BinanceTrade {
     const fullPayload = `${qs}&signature=${signature}`;
 
     const isDemo = this.isDemo();
-    const isFile = typeof window !== 'undefined' && window.location && window.location.protocol === 'file:';
     const proxyPrefix = isDemo ? '/proxy-binance-demo' : '/proxy-binance-real';
     const targetHost  = isDemo ? 'testnet.binancefuture.com' : 'fapi.binance.com';
     const directBase  = this.getBaseUrl();
@@ -103,32 +102,10 @@ class BinanceTrade {
     let data = null;
     let isSuccess = false;
     let lastStatusCode = 0;
+    let lastErrorMsg = '';
 
-    // Intento 1: Directo Oficial Binance Futuros
-    try {
-      const fetchUrl = `${directBase}${path}?${fullPayload}`;
-      const res = await fetch(fetchUrl, {
-        method,
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
-      lastStatusCode = res.status;
-      const text = await res.text();
-
-      if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-        try {
-          data = JSON.parse(text);
-          isSuccess = true;
-        } catch (e) {}
-      }
-    } catch (err) {
-      console.warn('[Trade] Intento directo falló:', err.message);
-    }
-
-    // Intento 2: Localhost Proxy (si se ejecuta en PC con server.js / Iniciar_App_Local.bat)
-    if (!isSuccess) {
+    // Intento 1: Si estamos en localhost o servidor Node local
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
       try {
         const localUrl = `http://localhost:3000${proxyPrefix}${path}?${fullPayload}`;
         const res = await fetch(localUrl, {
@@ -137,22 +114,82 @@ class BinanceTrade {
         });
         lastStatusCode = res.status;
         const text = await res.text();
-
         if (text && !text.trim().startsWith('<')) {
+          data = JSON.parse(text);
+          isSuccess = true;
+        }
+      } catch (err) {
+        console.warn('[Trade Localhost Proxy]:', err.message);
+      }
+    }
+
+    // Intento 2: Directo Oficial Binance Futuros (o vía Gateway)
+    if (!isSuccess) {
+      try {
+        const fetchUrl = `${directBase}${path}?${fullPayload}`;
+        const res = await fetch(fetchUrl, {
+          method,
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+        lastStatusCode = res.status;
+        const text = await res.text();
+
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           try {
             data = JSON.parse(text);
             isSuccess = true;
-          } catch (e) {}
+          } catch (e) {
+            lastErrorMsg = text;
+          }
+        } else {
+          lastErrorMsg = `HTTP ${res.status}: ${res.statusText}`;
         }
-      } catch (err) {}
+      } catch (err) {
+        lastErrorMsg = err.message;
+        console.warn('[Trade Directo falló]:', err.message);
+      }
+    }
+
+    // Intento 3: Public Zero-CORS Transparent Relays para Móvil y GitHub Pages
+    if (!isSuccess) {
+      const gateways = [
+        `https://corsproxy.io/?${encodeURIComponent(directBase + path + '?' + fullPayload)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directBase + path + '?' + fullPayload)}`
+      ];
+
+      for (const gwUrl of gateways) {
+        try {
+          const res = await fetch(gwUrl, {
+            method,
+            headers: {
+              'X-MBX-APIKEY': apiKey,
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          });
+          lastStatusCode = res.status;
+          const text = await res.text();
+          if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+            try {
+              data = JSON.parse(text);
+              isSuccess = true;
+              break;
+            } catch (e) {}
+          }
+        } catch (gwErr) {
+          console.warn('[Trade Gateway Fallback]:', gwErr.message);
+        }
+      }
     }
 
     if (!isSuccess || !data) {
-      throw new Error(`Error de conexión con Binance (${lastStatusCode || 500}). Verifica tus claves API en ⚙️ Configurar API.`);
+      throw new Error(`Error de conexión con Binance (${lastStatusCode || 500}): ${lastErrorMsg || 'Verifica conexión o servidor local'}`);
     }
 
     if (data && data.code && data.code !== 200 && data.msg) {
-      throw new Error(`Binance: ${data.msg} (código ${data.code})`);
+      throw new Error(`Binance (${data.code}): ${data.msg}`);
     }
 
     return data;
