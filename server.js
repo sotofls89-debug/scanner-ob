@@ -118,10 +118,27 @@ const server = http.createServer((req, res) => {
   });
 });
 
+const os = require('os');
+
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '192.168.100.3';
+}
+
 server.listen(PORT, '0.0.0.0', () => {
+  const localIp = getLocalIp();
   console.log('============================================================');
-  console.log(`⚡ Servidor SMC Bot & Proxy Binance iniciado`);
-  console.log(`🌐 Local:   http://localhost:${PORT}`);
-  console.log(`📱 En Red:  http://0.0.0.0:${PORT}`);
+  console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo`);
+  console.log(`💻 En tu PC:     http://localhost:${PORT}`);
+  console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
   console.log('============================================================');
+  console.log(`(Asegúrate de que tu Móvil esté conectado al mismo Wi-Fi)`);
 });
+

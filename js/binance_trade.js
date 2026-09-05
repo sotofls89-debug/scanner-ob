@@ -104,10 +104,19 @@ class BinanceTrade {
     let lastStatusCode = 0;
     let lastErrorMsg = '';
 
-    // Intento 1: Si estamos en localhost o servidor Node local
-    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    // Intento 1: Si estamos en localhost o servidor Node local / Wi-Fi IP
+    const isLocalServer = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' || 
+      window.location.hostname === '127.0.0.1' || 
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.') ||
+      window.location.port === '3000'
+    );
+
+    if (isLocalServer) {
       try {
-        const localUrl = `http://localhost:3000${proxyPrefix}${path}?${fullPayload}`;
+        const origin = window.location.origin.includes(':3000') ? window.location.origin : 'http://localhost:3000';
+        const localUrl = `${origin}${proxyPrefix}${path}?${fullPayload}`;
         const res = await fetch(localUrl, {
           method,
           headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost }
@@ -119,7 +128,7 @@ class BinanceTrade {
           isSuccess = true;
         }
       } catch (err) {
-        console.warn('[Trade Localhost Proxy]:', err.message);
+        console.warn('[Trade Localhost/LAN Proxy]:', err.message);
       }
     }
 
