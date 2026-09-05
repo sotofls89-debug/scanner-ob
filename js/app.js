@@ -1083,29 +1083,110 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // WAKE LOCK: Evita que la pantalla se apague mientras la app está abierta
-  // (funciona en Android Chrome + Chrome PC, no en iOS)
+  // WAKE LOCK & ANTI-SUSPENSIÓN: Pantalla siempre encendida en Móvil y PC
   // ─────────────────────────────────────────────────────────────────────
   let wakeLock = null;
+  let isWakeLockRequested = true;
+  const btnWakeLock = document.getElementById('btn-toggle-wakelock');
+  const wakeLockIcon = document.getElementById('wakelock-icon');
+  const wakeLockLabel = document.getElementById('wakelock-label');
+
+  function updateWakeLockUI(isActive) {
+    if (!btnWakeLock) return;
+    if (isActive) {
+      btnWakeLock.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95 bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-sm shadow-yellow-500/20';
+      if (wakeLockIcon) wakeLockIcon.textContent = '💡';
+      if (wakeLockLabel) wakeLockLabel.textContent = 'Pantalla ON';
+    } else {
+      btnWakeLock.className = 'flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all active:scale-95 bg-gray-800 border-gray-700 text-gray-400';
+      if (wakeLockIcon) wakeLockIcon.textContent = '💤';
+      if (wakeLockLabel) wakeLockLabel.textContent = 'Pantalla Auto';
+    }
+  }
+
+  // Fallback para navegadores que bloquean WakeLock (ej. iOS Safari): reproducción de audio inaudible
+  let dummyAudio = null;
+  function ensureAudioKeepAwake() {
+    if (!dummyAudio) {
+      try {
+        dummyAudio = document.createElement('audio');
+        dummyAudio.setAttribute('loop', '');
+        dummyAudio.setAttribute('playsinline', '');
+        // WAV inaudible de 1 muestra en silencio (base64)
+        dummyAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      } catch (e) {}
+    }
+    if (dummyAudio && dummyAudio.paused) {
+      dummyAudio.play().catch(() => {});
+    }
+  }
 
   async function requestWakeLock() {
+    if (!isWakeLockRequested) return;
     if ('wakeLock' in navigator) {
       try {
+        if (wakeLock) {
+          try { await wakeLock.release(); } catch (e) {}
+          wakeLock = null;
+        }
         wakeLock = await navigator.wakeLock.request('screen');
+        updateWakeLockUI(true);
         console.log('[WakeLock] Pantalla bloqueada activa.');
         wakeLock.addEventListener('release', () => {
-          console.log('[WakeLock] Pantalla desbloqueada.');
+          console.log('[WakeLock] Pantalla liberada.');
+          if (isWakeLockRequested && !document.hidden) {
+            updateWakeLockUI(false);
+            setTimeout(requestWakeLock, 1000);
+          } else {
+            updateWakeLockUI(false);
+          }
         });
       } catch (err) {
-        console.warn('[WakeLock] No disponible:', err.message);
+        console.warn('[WakeLock API Error]:', err.message);
+        ensureAudioKeepAwake();
+        updateWakeLockUI(true);
       }
+    } else {
+      ensureAudioKeepAwake();
+      updateWakeLockUI(true);
     }
   }
 
   // Re-solicitar WakeLock cada vez que la app vuelve al primer plano
   document.addEventListener('visibilitychange', async () => {
-    if (!document.hidden && wakeLock === null) {
+    if (!document.hidden && isWakeLockRequested) {
       await requestWakeLock();
+    }
+  });
+
+  // Cualquier toque en la pantalla activa el permiso de pantalla encendida si estaba pendiente
+  const activateWakeLockOnTouch = () => {
+    if (isWakeLockRequested && !wakeLock) {
+      requestWakeLock();
+    }
+    ensureAudioKeepAwake();
+  };
+  window.addEventListener('click', activateWakeLockOnTouch, { passive: true });
+  window.addEventListener('touchstart', activateWakeLockOnTouch, { passive: true });
+
+  btnWakeLock?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isWakeLockRequested) {
+      isWakeLockRequested = false;
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+        wakeLock = null;
+      }
+      if (dummyAudio) {
+        dummyAudio.pause();
+      }
+      updateWakeLockUI(false);
+      showToast('💤 Modo reposo automático permitido', 'info');
+    } else {
+      isWakeLockRequested = true;
+      requestWakeLock();
+      updateWakeLockUI(true);
+      showToast('💡 Pantalla siempre encendida activada', 'success');
     }
   });
 
