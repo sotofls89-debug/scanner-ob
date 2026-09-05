@@ -604,6 +604,9 @@
         navigator.serviceWorker.register('./sw.js').then(reg => {
           let isReloading = false;
 
+          // Forzar chequeo de actualización inmediata cada vez que se carga la página
+          reg.update().catch(() => {});
+
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (!isReloading) {
               isReloading = true;
@@ -616,20 +619,12 @@
             if (!newWorker) return;
 
             newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                const banner = document.getElementById('update-banner');
-                if (banner) banner.classList.remove('hidden');
-
-                // Si no se pulsa, activar tras 2s
-                setTimeout(() => {
+              if (newWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  const banner = document.getElementById('update-banner');
+                  if (banner) banner.classList.remove('hidden');
                   newWorker.postMessage({ type: 'SKIP_WAITING' });
-                  setTimeout(() => {
-                    if (!isReloading) {
-                      isReloading = true;
-                      window.location.reload();
-                    }
-                  }, 1200);
-                }, 2000);
+                }
               }
             });
           });
