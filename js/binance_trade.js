@@ -104,7 +104,7 @@ class BinanceTrade {
     let isSuccess = false;
     let lastStatusCode = 0;
 
-    // 1. Intento Directo Oficial Binance Futuros
+    // Intento 1: Directo Oficial Binance Futuros
     try {
       const fetchUrl = `${directBase}${path}?${fullPayload}`;
       const res = await fetch(fetchUrl, {
@@ -127,8 +127,8 @@ class BinanceTrade {
       console.warn('[Trade] Intento directo falló:', err.message);
     }
 
-    // 2. Intento Localhost Proxy (si se ejecuta en PC con server.js)
-    if (!isSuccess && isFile) {
+    // Intento 2: Localhost Proxy (si se ejecuta en PC con server.js / Iniciar_App_Local.bat)
+    if (!isSuccess) {
       try {
         const localUrl = `http://localhost:3000${proxyPrefix}${path}?${fullPayload}`;
         const res = await fetch(localUrl, {
