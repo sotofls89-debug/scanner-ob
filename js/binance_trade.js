@@ -104,7 +104,29 @@ class BinanceTrade {
     let lastStatusCode = 0;
     let lastErrorMsg = '';
 
-    // Intento 1: Si estamos en localhost o servidor Node local / Wi-Fi IP
+    // Intento 1: Si estamos en Netlify (o cualquier host web con proxy inverso)
+    if (typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
+      try {
+        const netlifyUrl = `${proxyPrefix}${path}?${fullPayload}`;
+        const res = await fetch(netlifyUrl, {
+          method,
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+        lastStatusCode = res.status;
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          data = JSON.parse(text);
+          isSuccess = true;
+        }
+      } catch (err) {
+        console.warn('[Trade Netlify Proxy]:', err.message);
+      }
+    }
+
+    // Intento 2: Si estamos en localhost o servidor Node local / Wi-Fi IP
     const isLocalServer = typeof window !== 'undefined' && (
       window.location.hostname === 'localhost' || 
       window.location.hostname === '127.0.0.1' || 
@@ -113,7 +135,7 @@ class BinanceTrade {
       window.location.port === '3000'
     );
 
-    if (isLocalServer) {
+    if (!isSuccess && isLocalServer) {
       try {
         const origin = window.location.origin.includes(':3000') ? window.location.origin : 'http://localhost:3000';
         const localUrl = `${origin}${proxyPrefix}${path}?${fullPayload}`;
