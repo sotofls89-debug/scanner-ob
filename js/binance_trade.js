@@ -86,8 +86,11 @@ class BinanceTrade {
 
     const apiKey = this.getApiKey();
     const timestamp = Date.now();
-    const allParams = { ...params, apiKey, timestamp };
-    const qs = Object.entries(allParams).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    // Parámetros oficiales de Binance Futuros (NUNCA incluir apiKey en los parámetros de la URL)
+    const allParams = { ...params, timestamp, recvWindow: 60000 };
+    const qs = Object.entries(allParams)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
     const signature = await this.sign(qs);
     const fullPayload = `${qs}&signature=${signature}`;
 
@@ -101,19 +104,16 @@ class BinanceTrade {
     let isSuccess = false;
     let lastStatusCode = 0;
 
-    // 1. Intento Directo Nativo Simple Request (CORS universal sin preflight OPTIONS)
+    // 1. Intento Directo Oficial Binance Futuros
     try {
-      let fetchUrl = `${directBase}${path}`;
-      const fetchOptions = { method };
-
-      if (method === 'GET' || method === 'DELETE') {
-        fetchUrl += `?${fullPayload}`;
-      } else {
-        fetchOptions.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-        fetchOptions.body = fullPayload;
-      }
-
-      const res = await fetch(fetchUrl, fetchOptions);
+      const fetchUrl = `${directBase}${path}?${fullPayload}`;
+      const res = await fetch(fetchUrl, {
+        method,
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
       lastStatusCode = res.status;
       const text = await res.text();
 
@@ -124,32 +124,10 @@ class BinanceTrade {
         } catch (e) {}
       }
     } catch (err) {
-      console.warn('[Trade] Intento directo sin headers falló:', err.message);
+      console.warn('[Trade] Intento directo falló:', err.message);
     }
 
-    // 2. Intento Directo con Header X-MBX-APIKEY
-    if (!isSuccess) {
-      try {
-        const fetchUrl = `${directBase}${path}?${fullPayload}`;
-        const res = await fetch(fetchUrl, {
-          method,
-          headers: { 'X-MBX-APIKEY': apiKey }
-        });
-        lastStatusCode = res.status;
-        const text = await res.text();
-
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          try {
-            data = JSON.parse(text);
-            isSuccess = true;
-          } catch (e) {}
-        }
-      } catch (err) {
-        console.warn('[Trade] Intento con headers falló:', err.message);
-      }
-    }
-
-    // 3. Intento Localhost Proxy (si se ejecuta en entorno local)
+    // 2. Intento Localhost Proxy (si se ejecuta en PC con server.js)
     if (!isSuccess && isFile) {
       try {
         const localUrl = `http://localhost:3000${proxyPrefix}${path}?${fullPayload}`;

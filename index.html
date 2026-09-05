@@ -36,7 +36,7 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260904-1411">
+  <link rel="stylesheet" href="styles.css?v=20260904-2310">
 </head>
 <body class="bg-bgDark text-white select-none">
 
@@ -396,10 +396,13 @@
 
       <!-- DEMO -->
       <div id="box-demo-keys" class="space-y-2 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20">
-        <div class="text-[10px] uppercase font-black text-yellow-400 tracking-wider">🟡 Cuenta DEMO (Testnet)</div>
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] uppercase font-black text-yellow-400 tracking-wider">🟡 Cuenta DEMO (Testnet)</span>
+          <a href="https://testnet.binancefuture.com" target="_blank" class="text-[10px] text-yellow-400/80 hover:text-yellow-300 underline font-bold">testnet.binancefuture.com ↗</a>
+        </div>
         <div>
           <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Demo:</label>
-          <input type="password" id="input-api-demo-key" placeholder="Pega tu API Key Demo aquí"
+          <input type="text" id="input-api-demo-key" placeholder="Pega tu API Key Demo aquí"
             class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-yellow-500">
         </div>
         <div>
@@ -411,10 +414,13 @@
 
       <!-- REAL -->
       <div id="box-real-keys" class="space-y-2 p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
-        <div class="text-[10px] uppercase font-black text-rose-400 tracking-wider">🔴 Cuenta REAL (Futuros USDT-M)</div>
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] uppercase font-black text-rose-400 tracking-wider">🔴 Cuenta REAL (Futuros USDT-M)</span>
+          <span class="text-[10px] text-gray-400 font-bold">Binance.com</span>
+        </div>
         <div>
           <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Real:</label>
-          <input type="password" id="input-api-real-key" placeholder="Pega tu API Key Real aquí"
+          <input type="text" id="input-api-real-key" placeholder="Pega tu API Key Real aquí"
             class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-rose-500">
         </div>
         <div>
@@ -576,13 +582,13 @@
 
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260904-1411"></script>
-  <script src="js/trade_tracker.js?v=20260904-1411"></script>
-  <script src="js/smc_detector.js?v=20260904-1411"></script>
-  <script src="js/scanner.js?v=20260904-1411"></script>
-  <script src="js/binance_trade.js?v=20260904-1411"></script>
-  <script src="js/cloud_sync.js?v=20260904-1411"></script>
-  <script src="js/app.js?v=20260904-1411"></script>
+  <script src="js/binance_api.js?v=20260904-2310"></script>
+  <script src="js/trade_tracker.js?v=20260904-2310"></script>
+  <script src="js/smc_detector.js?v=20260904-2310"></script>
+  <script src="js/scanner.js?v=20260904-2310"></script>
+  <script src="js/binance_trade.js?v=20260904-2310"></script>
+  <script src="js/cloud_sync.js?v=20260904-2310"></script>
+  <script src="js/app.js?v=20260904-2310"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>
