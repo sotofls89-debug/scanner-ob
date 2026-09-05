@@ -322,6 +322,9 @@ class BinanceTrade {
     if (isDual) entryParams.positionSide = positionSide;
 
     const entryOrder = await this.request('POST', '/fapi/v1/order', entryParams);
+    if (!entryOrder || (!entryOrder.orderId && !entryOrder.clientOrderId)) {
+      throw new Error(`Binance no confirmó la orden de entrada: ${JSON.stringify(entryOrder)}`);
+    }
 
     let slOrderId = null;
     let tpOrderId = null;
