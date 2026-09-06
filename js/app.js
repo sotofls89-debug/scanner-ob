@@ -860,6 +860,139 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('🔐 Claves API de Binance guardadas con éxito', 'success');
     });
 
+    // ─── Transferencia Instantánea de Claves por Código QR (PC ↔ Móvil) ───
+    const modalQRExport = document.getElementById('modal-qr-export');
+    const modalQRScan = document.getElementById('modal-qr-scan');
+    const btnOpenQRExport = document.getElementById('btn-open-qr-export');
+    const btnOpenQRScan = document.getElementById('btn-open-qr-scan');
+    const btnCloseQRExport = document.getElementById('btn-close-qr-export');
+    const btnDoneQRExport = document.getElementById('btn-done-qr-export');
+    const btnCloseQRScan = document.getElementById('btn-close-qr-scan');
+    const btnCancelQRScan = document.getElementById('btn-cancel-qr-scan');
+    const qrExportTarget = document.getElementById('qr-export-target');
+
+    let html5QrScannerInstance = null;
+
+    btnOpenQRExport?.addEventListener('click', () => {
+      const cfg = {
+        demoKey: inputDemoKey ? inputDemoKey.value.trim() : '',
+        demoSecret: inputDemoSecret ? inputDemoSecret.value.trim() : '',
+        realKey: inputRealKey ? inputRealKey.value.trim() : '',
+        realSecret: inputRealSecret ? inputRealSecret.value.trim() : '',
+        mode: binanceTrade.isDemo() ? 'demo' : 'real'
+      };
+
+      if (!cfg.demoKey && !cfg.realKey) {
+        showToast('Introduce al menos una clave API antes de exportar', 'danger');
+        return;
+      }
+
+      if (qrExportTarget) {
+        qrExportTarget.innerHTML = '';
+        try {
+          const payload = 'SMC_KEYS:' + JSON.stringify(cfg);
+          new QRCode(qrExportTarget, {
+            text: payload,
+            width: 210,
+            height: 210,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch (qrErr) {
+          showToast('Error generando QR: ' + qrErr.message, 'danger');
+          return;
+        }
+      }
+
+      modalQRExport?.classList.remove('hidden');
+    });
+
+    btnCloseQRExport?.addEventListener('click', () => {
+      modalQRExport?.classList.add('hidden');
+    });
+    btnDoneQRExport?.addEventListener('click', () => {
+      modalQRExport?.classList.add('hidden');
+    });
+
+    async function stopQRScanner() {
+      if (html5QrScannerInstance) {
+        try {
+          await html5QrScannerInstance.stop();
+        } catch (e) {}
+        html5QrScannerInstance = null;
+      }
+      modalQRScan?.classList.add('hidden');
+    }
+
+    btnCloseQRScan?.addEventListener('click', stopQRScanner);
+    btnCancelQRScan?.addEventListener('click', stopQRScanner);
+
+    btnOpenQRScan?.addEventListener('click', async () => {
+      if (typeof Html5Qrcode === 'undefined') {
+        showToast('Cargando librería de escáner... Intenta de nuevo en 2s', 'info');
+        return;
+      }
+
+      modalQRScan?.classList.remove('hidden');
+
+      try {
+        if (html5QrScannerInstance) {
+          try { await html5QrScannerInstance.stop(); } catch (e) {}
+        }
+
+        html5QrScannerInstance = new Html5Qrcode('qr-reader');
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          showToast('No se detectó cámara en este dispositivo', 'danger');
+          stopQRScanner();
+          return;
+        }
+
+        // Seleccionar cámara trasera en móviles preferentemente
+        const cameraId = cameras.length > 1 ? cameras[cameras.length - 1].id : cameras[0].id;
+
+        await html5QrScannerInstance.start(
+          cameraId,
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          (decodedText) => {
+            if (decodedText && decodedText.startsWith('SMC_KEYS:')) {
+              try {
+                const jsonStr = decodedText.replace('SMC_KEYS:', '');
+                const keysData = JSON.parse(jsonStr);
+
+                binanceTrade.saveConfig({
+                  demoKey: keysData.demoKey || '',
+                  demoSecret: keysData.demoSecret || '',
+                  realKey: keysData.realKey || '',
+                  realSecret: keysData.realSecret || '',
+                  mode: keysData.mode || 'demo'
+                });
+
+                if (inputDemoKey) inputDemoKey.value = keysData.demoKey || '';
+                if (inputDemoSecret) inputDemoSecret.value = keysData.demoSecret || '';
+                if (inputRealKey) inputRealKey.value = keysData.realKey || '';
+                if (inputRealSecret) inputRealSecret.value = keysData.realSecret || '';
+
+                updateModeUI();
+                stopQRScanner();
+                showToast('🎉 ¡Claves API importadas exitosamente desde el QR!', 'success');
+              } catch (parseErr) {
+                showToast('Formato QR no válido', 'danger');
+              }
+            }
+          },
+          (errorMessage) => {
+            // Ignorar errores por frame sin QR
+          }
+        );
+      } catch (camErr) {
+        showToast('Error al acceder a la cámara: ' + camErr.message, 'danger');
+        stopQRScanner();
+      }
+    });
+
     const discordModal = document.getElementById('discord-modal');
     const btnOpenDiscord = document.getElementById('btn-open-discord');
     const btnCloseDiscord = document.getElementById('btn-close-discord');

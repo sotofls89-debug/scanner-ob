@@ -453,7 +453,17 @@
         ⚠️ En Binance → Gestión API → activa permisos de <strong class="text-gray-300">Futuros USDT-M</strong>.
       </div>
 
-      <div class="flex justify-end pt-1 border-t border-borderSubtle">
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-borderSubtle">
+        <button type="button" id="btn-open-qr-export" class="py-2 px-3 bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95" title="Generar código QR para transferir claves a tu móvil">
+          <span>📲</span> Exportar QR
+        </button>
+
+        <button type="button" id="btn-open-qr-scan" class="py-2 px-3 bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95" title="Abrir cámara del móvil para escanear QR de la PC">
+          <span>📷</span> Escanear QR
+        </button>
+      </div>
+
+      <div class="flex justify-end pt-1">
         <button id="btn-save-api" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/30 active:scale-95 w-full">
           🔐 Guardar Claves
         </button>
@@ -582,20 +592,83 @@
           Dejar Correr sin Mover SL
         </button>
       </div>
+  <!-- ═══════════════ MODAL: GENERADOR QR DE CLAVES (PC -> Móvil) ═══════════════ -->
+  <div id="modal-qr-export" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4 text-center">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📲</span>
+          <div class="text-left">
+            <h3 class="font-extrabold text-sm text-white">Exportar a Móvil con QR</h3>
+            <p class="text-[10px] text-gray-400">Transferencia directa pantalla a cámara</p>
+          </div>
+        </div>
+        <button id="btn-close-qr-export" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+
+      <div class="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto w-[240px] h-[240px]" id="qr-export-canvas-container">
+        <div id="qr-export-target"></div>
+      </div>
+
+      <div class="bg-bgDark p-3 rounded-xl border border-borderSubtle text-left space-y-1">
+        <div class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+          <span>📸</span> Instrucciones:
+        </div>
+        <p class="text-[10px] text-gray-300 leading-relaxed">
+          1. En tu teléfono móvil, abre la app y toca <strong>⚙️ API &gt; 📷 Escanear QR</strong>.<br>
+          2. Apunta la cámara a este código y tus claves quedarán guardadas al instante.
+        </p>
+      </div>
+
+      <button id="btn-done-qr-export" class="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95">
+        Cerrar
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════ MODAL: ESCÁNER QR DE CÁMARA (Móvil) ═══════════════ -->
+  <div id="modal-qr-scan" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
+    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4 text-center">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📷</span>
+          <div class="text-left">
+            <h3 class="font-extrabold text-sm text-white">Escanear Código QR</h3>
+            <p class="text-[10px] text-gray-400">Apunta al QR de tu PC para importar</p>
+          </div>
+        </div>
+        <button id="btn-close-qr-scan" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+
+      <div id="qr-reader-container" class="rounded-xl overflow-hidden bg-black border border-borderSubtle mx-auto w-full aspect-square flex items-center justify-center">
+        <div id="qr-reader" class="w-full h-full"></div>
+      </div>
+
+      <p class="text-[10px] text-gray-400">
+        Mantén la cámara firme enfocando el código QR generado en la pantalla de tu PC.
+      </p>
+
+      <button id="btn-cancel-qr-scan" class="w-full py-2 bg-rose-600/20 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition-all active:scale-95">
+        Cancelar Escaneo
+      </button>
     </div>
   </div>
 
   <div id="toast-container"></div>
 
+  <!-- Librerías QR Standalone (Zero-Dependencies) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260905-1448"></script>
-  <script src="js/trade_tracker.js?v=20260905-1448"></script>
-  <script src="js/smc_detector.js?v=20260905-1448"></script>
-  <script src="js/scanner.js?v=20260905-1448"></script>
-  <script src="js/binance_trade.js?v=20260905-1448"></script>
-  <script src="js/cloud_sync.js?v=20260905-1448"></script>
-  <script src="js/app.js?v=20260905-1448"></script>
+  <script src="js/binance_api.js?v=20260906-0848"></script>
+  <script src="js/trade_tracker.js?v=20260906-0848"></script>
+  <script src="js/smc_detector.js?v=20260906-0848"></script>
+  <script src="js/scanner.js?v=20260906-0848"></script>
+  <script src="js/binance_trade.js?v=20260906-0848"></script>
+  <script src="js/cloud_sync.js?v=20260906-0848"></script>
+  <script src="js/app.js?v=20260906-0848"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>
