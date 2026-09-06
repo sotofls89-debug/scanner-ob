@@ -954,9 +954,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Seleccionar cámara trasera en móviles preferentemente
         const cameraId = cameras.length > 1 ? cameras[cameras.length - 1].id : cameras[0].id;
 
+        // Configuración de escáner perfectamente cuadrado (1:1)
+        const config = {
+          fps: 15,
+          qrbox: { width: 220, height: 220 },
+          aspectRatio: 1.0,
+          showTorchButtonIfSupported: true
+        };
+
         await html5QrScannerInstance.start(
           cameraId,
-          { fps: 10, qrbox: { width: 220, height: 220 } },
+          config,
           (decodedText) => {
             if (decodedText && decodedText.startsWith('SMC_KEYS:')) {
               try {
