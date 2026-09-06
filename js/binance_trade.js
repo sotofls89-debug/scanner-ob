@@ -145,7 +145,7 @@ class BinanceTrade {
         });
         lastStatusCode = res.status;
         const text = await res.text();
-        if (text && !text.trim().startsWith('<')) {
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
         }
@@ -154,7 +154,25 @@ class BinanceTrade {
       }
     }
 
-    // Intento 2: Directo Oficial Binance Futuros (o vía Gateway)
+    // Intento 3: Si el móvil está en GitHub Pages o Netlify pero en la misma red Wi-Fi de la PC
+    if (!isSuccess) {
+      try {
+        const lanBridgeUrl = `http://192.168.100.3:3000${proxyPrefix}${path}?${fullPayload}`;
+        const res = await fetch(lanBridgeUrl, {
+          method,
+          headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost },
+          signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+        });
+        lastStatusCode = res.status;
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          data = JSON.parse(text);
+          isSuccess = true;
+        }
+      } catch (bridgeErr) {}
+    }
+
+    // Intento 4: Directo Oficial Binance Futuros
     if (!isSuccess) {
       try {
         const fetchUrl = `${directBase}${path}?${fullPayload}`;
@@ -181,37 +199,6 @@ class BinanceTrade {
       } catch (err) {
         lastErrorMsg = err.message;
         console.warn('[Trade Directo falló]:', err.message);
-      }
-    }
-
-    // Intento 3: Public Zero-CORS Transparent Relays para Móvil y GitHub Pages
-    if (!isSuccess) {
-      const gateways = [
-        `https://corsproxy.io/?${encodeURIComponent(directBase + path + '?' + fullPayload)}`,
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directBase + path + '?' + fullPayload)}`
-      ];
-
-      for (const gwUrl of gateways) {
-        try {
-          const res = await fetch(gwUrl, {
-            method,
-            headers: {
-              'X-MBX-APIKEY': apiKey,
-              'Content-Type': 'application/x-www-form-urlencoded'
-            }
-          });
-          lastStatusCode = res.status;
-          const text = await res.text();
-          if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-            try {
-              data = JSON.parse(text);
-              isSuccess = true;
-              break;
-            } catch (e) {}
-          }
-        } catch (gwErr) {
-          console.warn('[Trade Gateway Fallback]:', gwErr.message);
-        }
       }
     }
 
