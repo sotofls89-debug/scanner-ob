@@ -874,16 +874,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let html5QrScannerInstance = null;
 
     btnOpenQRExport?.addEventListener('click', () => {
+      const savedCfg = binanceTrade.loadConfig();
       const cfg = {
-        demoKey: inputDemoKey ? inputDemoKey.value.trim() : '',
-        demoSecret: inputDemoSecret ? inputDemoSecret.value.trim() : '',
-        realKey: inputRealKey ? inputRealKey.value.trim() : '',
-        realSecret: inputRealSecret ? inputRealSecret.value.trim() : '',
+        demoKey: (inputDemoKey && inputDemoKey.value.trim()) || savedCfg.demoKey || '',
+        demoSecret: (inputDemoSecret && inputDemoSecret.value.trim()) || savedCfg.demoSecret || '',
+        realKey: (inputRealKey && inputRealKey.value.trim()) || savedCfg.realKey || '',
+        realSecret: (inputRealSecret && inputRealSecret.value.trim()) || savedCfg.realSecret || '',
         mode: binanceTrade.isDemo() ? 'demo' : 'real'
       };
 
       if (!cfg.demoKey && !cfg.realKey) {
-        showToast('Introduce al menos una clave API antes de exportar', 'danger');
+        showToast('Guarda o escribe tus claves API antes de exportar', 'danger');
         return;
       }
 
