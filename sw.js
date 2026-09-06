@@ -4,7 +4,7 @@
  */
 
 // ⚙️ Versión del caché — se actualiza automáticamente con el script bump-version.js
-const CACHE_VERSION = 'v20260906-0848';
+const CACHE_VERSION = 'v20260906-0914';
 const CACHE_NAME = `smc-scanner-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -60,11 +60,13 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Las llamadas a APIs externas o proxy SIEMPRE van directo a la red
-  if (url.hostname.includes('binance.com') || url.hostname.includes('discord.com') || url.pathname.startsWith('/proxy-binance')) {
-    event.respondWith(
-      fetch(event.request).catch(() => new Response('', { status: 503 }))
-    );
+  // Las llamadas a APIs externas o proxy NO se interceptan en el Service Worker
+  if (
+    url.hostname.includes('binance') || 
+    url.hostname.includes('discord') || 
+    url.pathname.includes('/proxy-binance') ||
+    url.port === '3000'
+  ) {
     return;
   }
 
