@@ -157,11 +157,22 @@ class BinanceTrade {
         try { ws.close(); } catch (_) {}
         try {
           const msg = JSON.parse(event.data);
-          if (msg.status === 200 || (msg.result !== undefined && !msg.error)) {
-            resolve(msg.result !== undefined ? msg.result : msg);
+          // Log completo para diagnóstico — visible en DevTools → Console
+          console.log(`[WS ${wsMethod}] Respuesta raw:`, JSON.stringify(msg).slice(0, 400));
+
+          if (msg.status === 200 && msg.result !== undefined) {
+            console.log(`[WS ${wsMethod}] ✅ Éxito:`, msg.result);
+            resolve(msg.result);
+          } else if (msg.error) {
+            console.error(`[WS ${wsMethod}] ❌ Error Binance:`, msg.error);
+            reject(new Error(`Binance WS (${msg.error.code}): ${msg.error.msg}`));
+          } else if (msg.status && msg.status !== 200) {
+            console.error(`[WS ${wsMethod}] ❌ Status ${msg.status}:`, msg);
+            reject(new Error(`Binance WS status ${msg.status}: ${JSON.stringify(msg)}`));
           } else {
-            const err = msg.error || { code: msg.status, msg: JSON.stringify(msg) };
-            reject(new Error(`Binance WS (${err.code}): ${err.msg || JSON.stringify(err)}`));
+            // Respuesta inesperada — loggear y rechazar para no dar falso positivo
+            console.error(`[WS ${wsMethod}] ❌ Respuesta inesperada:`, msg);
+            reject(new Error(`Binance WS respuesta inesperada: ${JSON.stringify(msg).slice(0, 200)}`));
           }
         } catch (e) {
           reject(new Error(`Error parseando respuesta WebSocket: ${e.message}`));
