@@ -418,85 +418,83 @@ class BinanceTrade {
     let slErrorMsg = null;
     let tpErrorMsg = null;
 
-    // 5. Stop Loss via Algo Order API (/fapi/v1/algoOrder)
+    // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
+    // Usa /fapi/v1/order estándar → va por WebSocket API → sin CORS, sin proxy
+    // stopPrice = precio de activación; closePosition = cierra toda la posición
     const slParams = {
-      algoType:     'CONDITIONAL',
-      symbol:       cleanSym,
-      side:         closeSide,
-      type:         'STOP_MARKET',
-      triggerPrice: formattedStop,
-      workingType:  'MARK_PRICE',
-      quantity:     finalQty
+      symbol:        cleanSym,
+      side:          closeSide,
+      type:          'STOP_MARKET',
+      stopPrice:     formattedStop,
+      closePosition: 'true',
+      workingType:   'MARK_PRICE',
+      timeInForce:   'GTE_GTC'
     };
-    if (isDual) {
-      slParams.positionSide = positionSide;
-    } else {
-      slParams.reduceOnly = 'true';
-    }
+    if (isDual) slParams.positionSide = positionSide;
 
     try {
-      const slOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', slParams);
-      slOrderId = slOrder.algoId || slOrder.orderId || 'ALGO_SL';
+      const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
+      slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
+      console.log('[Trade] ✅ SL colocado:', slOrderId);
     } catch (slErr) {
-      console.warn('[Trade SL Fallback closePosition]', slErr.message);
+      // Fallback: sin timeInForce (algunos testnet no lo requieren)
       try {
         const slParams2 = {
-          algoType:     'CONDITIONAL',
-          symbol:       cleanSym,
-          side:         closeSide,
-          type:         'STOP_MARKET',
-          triggerPrice: formattedStop,
-          workingType:  'MARK_PRICE',
-          closePosition: 'true'
+          symbol:        cleanSym,
+          side:          closeSide,
+          type:          'STOP_MARKET',
+          stopPrice:     formattedStop,
+          closePosition: 'true',
+          workingType:   'MARK_PRICE'
         };
         if (isDual) slParams2.positionSide = positionSide;
-        const slOrder2 = await this.httpRequest('POST', '/fapi/v1/algoOrder', slParams2);
-        slOrderId = slOrder2.algoId || slOrder2.orderId || 'ALGO_SL';
+        const slOrder2 = await this.request('POST', '/fapi/v1/order', slParams2);
+        slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
+        console.log('[Trade] ✅ SL colocado (fallback):', slOrderId);
       } catch (e2) {
         slErrorMsg = e2.message;
         console.error('[Trade SL Error]', e2.message);
       }
     }
 
-    // 6. Take Profit Final 1:3 via Algo Order API (/fapi/v1/algoOrder)
+    // ─── 6. Take Profit ───────────────────────────────────────────────────────
+    // Igual que SL: /fapi/v1/order estándar → WebSocket → sin CORS
     const tpParams = {
-      algoType:     'CONDITIONAL',
-      symbol:       cleanSym,
-      side:         closeSide,
-      type:         'TAKE_PROFIT_MARKET',
-      triggerPrice: formattedTP,
-      workingType:  'MARK_PRICE',
-      quantity:     finalQty
+      symbol:        cleanSym,
+      side:          closeSide,
+      type:          'TAKE_PROFIT_MARKET',
+      stopPrice:     formattedTP,
+      closePosition: 'true',
+      workingType:   'MARK_PRICE',
+      timeInForce:   'GTE_GTC'
     };
-    if (isDual) {
-      tpParams.positionSide = positionSide;
-    } else {
-      tpParams.reduceOnly = 'true';
-    }
+    if (isDual) tpParams.positionSide = positionSide;
 
     try {
-      const tpOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', tpParams);
-      tpOrderId = tpOrder.algoId || tpOrder.orderId || 'ALGO_TP';
+      const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
+      tpOrderId = tpOrder.orderId || tpOrder.clientOrderId || 'TP_OK';
+      console.log('[Trade] ✅ TP colocado:', tpOrderId);
     } catch (tpErr) {
-      console.warn('[Trade TP Fallback closePosition]', tpErr.message);
+      // Fallback: sin timeInForce
       try {
         const tpParams2 = {
-          algoType:     'CONDITIONAL',
-          symbol:       cleanSym,
-          side:         closeSide,
-          type:         'TAKE_PROFIT_MARKET',
-          triggerPrice: formattedTP,
-          workingType:  'MARK_PRICE',
-          closePosition: 'true'
+          symbol:        cleanSym,
+          side:          closeSide,
+          type:          'TAKE_PROFIT_MARKET',
+          stopPrice:     formattedTP,
+          closePosition: 'true',
+          workingType:   'MARK_PRICE'
         };
         if (isDual) tpParams2.positionSide = positionSide;
-        const tpOrder2 = await this.httpRequest('POST', '/fapi/v1/algoOrder', tpParams2);
-        tpOrderId = tpOrder2.algoId || tpOrder2.orderId || 'ALGO_TP';
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpParams2);
+        tpOrderId = tpOrder2.orderId || tpOrder2.clientOrderId || 'TP_OK';
+        console.log('[Trade] ✅ TP colocado (fallback):', tpOrderId);
       } catch (e2) {
         tpErrorMsg = e2.message;
         console.error('[Trade TP Error]', e2.message);
       }
     }
+
 
     return {
       mode:         this.config.mode,
@@ -532,31 +530,31 @@ class BinanceTrade {
     const bePrice    = bePriceNum.toFixed(filters.priceDecimals);
 
     try {
-      // 1. Cancelar órdenes de Stop Loss previas en Algo Orders
+      // 1. Cancelar órdenes de Stop Loss previas (órdenes estándar abiertas)
       try {
-        const openAlgos = await this.httpRequest('GET', '/fapi/v1/openAlgoOrders', { symbol: cleanSym });
-        if (Array.isArray(openAlgos)) {
-          for (const ord of openAlgos) {
-            if (ord.algoType === 'STOP_MARKET' || ord.type === 'STOP_MARKET') {
-              await this.httpRequest('DELETE', '/fapi/v1/algoOrder', { algoId: ord.algoId });
+        const openOrders = await this.request('GET', '/fapi/v1/openOrders', { symbol: cleanSym });
+        if (Array.isArray(openOrders)) {
+          for (const ord of openOrders) {
+            if (ord.type === 'STOP_MARKET') {
+              await this.request('DELETE', '/fapi/v1/order', { symbol: cleanSym, orderId: ord.orderId });
             }
           }
         }
       } catch (delErr) {}
 
-      // 2. Colocar nuevo Stop Loss a Breakeven via Algo API
+      // 2. Colocar nuevo Stop Loss a Breakeven via orden estándar → WebSocket
       const beParams = {
-        algoType:     'CONDITIONAL',
-        symbol:       cleanSym,
-        side:         closeSide,
-        type:         'STOP_MARKET',
-        triggerPrice: bePrice,
+        symbol:        cleanSym,
+        side:          closeSide,
+        type:          'STOP_MARKET',
+        stopPrice:     bePrice,
         closePosition: 'true',
-        workingType:  'MARK_PRICE'
+        workingType:   'MARK_PRICE'
       };
       if (isDual) beParams.positionSide = positionSide;
 
-      const slOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', beParams);
+      const slOrder = await this.request('POST', '/fapi/v1/order', beParams);
+      console.log('[Trade] ✅ BE SL colocado:', slOrder.orderId);
       return slOrder;
     } catch (e) {
       console.warn('[BinanceTrade] Error moviendo a BE:', e.message);
