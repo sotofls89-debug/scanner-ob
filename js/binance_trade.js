@@ -1,16 +1,33 @@
 /**
  * Binance Trade Executor — Motor de Ejecución Directa de Órdenes
- * 
+ *
+ * ARQUITECTURA DE CONEXIÓN (sin proxy externo, funciona desde GitHub Pages):
+ * ─────────────────────────────────────────────────────────────────────────
+ * 1. WebSocket API  wss://testnet.binancefuture.com/ws-fapi/v1
+ *    ✅ Sin CORS — los WebSockets NO tienen restricciones de origen
+ *    ✅ Funciona desde cualquier navegador, cualquier red, cualquier URL
+ *    ✅ Permanente: no depende de servidores locales ni servicios externos
+ *
+ * 2. HTTP directo  https://testnet.binancefuture.com
+ *    ✅ Para consultas GET públicas (exchangeInfo, etc.)
+ *    ✅ Binance permite GET desde cualquier origen
+ *    ❌ POST bloqueado por CORS en navegadores (por eso usamos WS para órdenes)
+ *
+ * 3. Node.js local  http://localhost:3000  (solo en PC con servidor activo)
+ *    ✅ Chrome/Firefox permiten llamadas a localhost desde páginas HTTPS
+ *    ✅ Útil cuando el servidor local está corriendo
+ *
  * SEGURIDAD:
  * - Las claves API NUNCA se escriben en el código fuente.
  * - Se almacenan SOLO en el localStorage del dispositivo del usuario.
  * - Se firma cada petición con HMAC-SHA256 usando la Web Crypto API del navegador.
- * - Las claves NUNCA se envían a ningún servidor externo propio.
  */
+
 class BinanceTrade {
   constructor() {
     this.storageKey = 'smc_api_config_v1';
-    this.config = this.loadConfig();
+    this.config     = this.loadConfig();
+    this._wsCache   = {};   // cache de WebSocket por endpoint
   }
 
   // ─── Persistencia ───────────────────────────────────────────────────────────
@@ -55,21 +72,30 @@ class BinanceTrade {
       : 'https://fapi.binance.com';
   }
 
-  getApiKey()  {
+  getWsUrl() {
+    return this.isDemo()
+      ? 'wss://testnet.binancefuture.com/ws-fapi/v1'
+      : 'wss://ws-fapi.binance.com/ws-fapi/v1';
+  }
+
+  getApiKey() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoKey : this.config.realKey;
     return (raw || '').trim().replace(/\s+/g, '');
   }
-  getSecret()  {
+
+  getSecret() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoSecret : this.config.realSecret;
     return (raw || '').trim().replace(/\s+/g, '');
   }
 
+  // ─── Firma HMAC-SHA256 ───────────────────────────────────────────────────────
+
   async sign(queryString) {
-    const enc     = new TextEncoder();
-    const keyData = enc.encode(this.getSecret());
-    const msgData = enc.encode(queryString);
+    const enc       = new TextEncoder();
+    const keyData   = enc.encode(this.getSecret());
+    const msgData   = enc.encode(queryString);
     const cryptoKey = await crypto.subtle.importKey(
       'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
     );
@@ -79,88 +105,101 @@ class BinanceTrade {
       .join('');
   }
 
-  async request(method, path, params = {}) {
-    if (!this.isConfigured()) {
-      throw new Error('API Keys no configuradas. Ve a ⚙️ Configurar API.');
-    }
+  // ─── WebSocket API (sin CORS, funciona desde GitHub Pages) ──────────────────
 
-    const apiKey = this.getApiKey();
+  /**
+   * Ejecuta una llamada a la WebSocket API de Binance Futures.
+   * Los WebSockets no tienen restricciones CORS, funcionan desde cualquier origen.
+   *
+   * @param {string} wsMethod  - Método WS (ej: "order.place", "account.status")
+   * @param {object} wsParams  - Parámetros SIN apiKey, timestamp ni signature (se agregan aquí)
+   * @param {number} timeoutMs - Timeout en ms (default 10s)
+   */
+  async wsRequest(wsMethod, wsParams = {}, timeoutMs = 10000) {
+    const apiKey   = this.getApiKey();
+    const timestamp = Date.now();
+
+    // Construir objeto de parámetros completo para firmar
+    const params = { ...wsParams, apiKey, timestamp, recvWindow: 60000 };
+
+    // Ordenar alfabéticamente y construir query string para firma
+    const sorted = Object.keys(params).sort();
+    const qs = sorted.map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
+    const signature = await this.sign(qs);
+
+    const payload = {
+      id:     crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+      method: wsMethod,
+      params: { ...params, signature }
+    };
+
+    return new Promise((resolve, reject) => {
+      const wsUrl = this.getWsUrl();
+      let ws;
+
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        return reject(new Error(`WebSocket no disponible: ${e.message}`));
+      }
+
+      const timer = setTimeout(() => {
+        try { ws.close(); } catch (_) {}
+        reject(new Error(`WebSocket timeout (${timeoutMs}ms) en ${wsMethod}`));
+      }, timeoutMs);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify(payload));
+      };
+
+      ws.onmessage = (event) => {
+        clearTimeout(timer);
+        try { ws.close(); } catch (_) {}
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.status === 200 || (msg.result !== undefined && !msg.error)) {
+            resolve(msg.result !== undefined ? msg.result : msg);
+          } else {
+            const err = msg.error || { code: msg.status, msg: JSON.stringify(msg) };
+            reject(new Error(`Binance WS (${err.code}): ${err.msg || JSON.stringify(err)}`));
+          }
+        } catch (e) {
+          reject(new Error(`Error parseando respuesta WebSocket: ${e.message}`));
+        }
+      };
+
+      ws.onerror = (e) => {
+        clearTimeout(timer);
+        reject(new Error('Error de conexión WebSocket con Binance'));
+      };
+
+      ws.onclose = (event) => {
+        clearTimeout(timer);
+        if (event.code !== 1000 && event.code !== 1001) {
+          // Cierre inesperado antes de recibir respuesta — puede ignorarse si ya resolvimos
+        }
+      };
+    });
+  }
+
+  // ─── HTTP directo (para GETs públicos + fallback en PC con localhost) ─────────
+
+  async httpRequest(method, path, params = {}) {
+    const apiKey    = this.getApiKey();
     const timestamp = Date.now();
     const allParams = { ...params, timestamp, recvWindow: 60000 };
     const qs = Object.entries(allParams)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
-    const signature = await this.sign(qs);
-    const fullPayload = `${qs}&signature=${signature}`;
+    const signature    = await this.sign(qs);
+    const fullPayload  = `${qs}&signature=${signature}`;
+    const baseUrl      = this.getBaseUrl();
+    const targetHost   = this.isDemo() ? 'testnet.binancefuture.com' : 'fapi.binance.com';
+    const proxyPrefix  = this.isDemo() ? '/proxy-binance-demo' : '/proxy-binance-real';
+    const corsHeaders  = { 'X-MBX-APIKEY': apiKey, 'Content-Type': 'application/x-www-form-urlencoded' };
 
-    const isDemo = this.isDemo();
-    const proxyPrefix = isDemo ? '/proxy-binance-demo' : '/proxy-binance-real';
-    const targetHost  = isDemo ? 'testnet.binancefuture.com' : 'fapi.binance.com';
-    const directBase  = this.getBaseUrl();
-
-    let data = null;
-    let isSuccess = false;
-    let lastStatusCode = 0;
-    let lastErrorMsg = '';
-
-    const corsHeaders = {
-      'X-MBX-APIKEY': apiKey,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    };
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // INTENTO 0: Netlify Edge Function en la nube (https://jade-swan-b6ce94.netlify.app)
-    // ✅ Siempre el PRIMERO — funciona desde GitHub Pages, datos móviles, cualquier red
-    // ✅ Edge Function reenvía el método (POST/GET) y el header X-MBX-APIKEY completo
-    // ✅ No depende del PC local ni de la red WiFi
-    // ─────────────────────────────────────────────────────────────────────────
-    if (!isSuccess) {
-      try {
-        const NETLIFY = 'https://jade-swan-b6ce94.netlify.app';
-        const url = `${NETLIFY}${proxyPrefix}${path}?${fullPayload}`;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 9000);
-        const res = await fetch(url, { method, headers: corsHeaders, signal: ctrl.signal });
-        clearTimeout(timer);
-        lastStatusCode = res.status;
-        const text = await res.text();
-        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          data = JSON.parse(text);
-          isSuccess = true;
-          console.log('[Trade] ✅ Netlify Edge Function OK');
-        } else {
-          lastErrorMsg = `Netlify ${res.status}: ${text?.slice(0, 120)}`;
-          console.warn('[Trade] ⚠️ Netlify Edge:', lastErrorMsg);
-        }
-      } catch (err) {
-        console.warn('[Trade] ⚠️ Netlify Edge falló:', err.message);
-      }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // INTENTO 1: Si la app ya corre directamente en Netlify (ruta relativa, más rápida)
-    // ─────────────────────────────────────────────────────────────────────────
-    if (!isSuccess && typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
-      try {
-        const url = `${proxyPrefix}${path}?${fullPayload}`;
-        const res = await fetch(url, { method, headers: corsHeaders });
-        lastStatusCode = res.status;
-        const text = await res.text();
-        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          data = JSON.parse(text);
-          isSuccess = true;
-          console.log('[Trade] ✅ Netlify Relativo OK');
-        }
-      } catch (err) {
-        console.warn('[Trade] ⚠️ Netlify Relativo:', err.message);
-      }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // INTENTO 2: Servidor Node.js local (localhost:3000)
-    // Solo activo cuando se accede desde localhost o 192.168.x (PC local o LAN)
-    // ─────────────────────────────────────────────────────────────────────────
-    const isLocalServer = typeof window !== 'undefined' && (
+    // Intento 1: Localhost (Chrome/Firefox permiten HTTP→localhost desde páginas HTTPS)
+    const isLocalCtx = typeof window !== 'undefined' && (
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1' ||
       window.location.hostname.startsWith('192.168.') ||
@@ -168,56 +207,83 @@ class BinanceTrade {
       window.location.port === '3000'
     );
 
-    if (!isSuccess && isLocalServer) {
+    if (isLocalCtx) {
       try {
         const origin = window.location.origin.includes(':3000')
           ? window.location.origin
           : `${window.location.protocol}//${window.location.hostname}:3000`;
-        const url = `${origin}${proxyPrefix}${path}?${fullPayload}`;
-        const res = await fetch(url, { method, headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost } });
-        lastStatusCode = res.status;
+        const res  = await fetch(`${origin}${proxyPrefix}${path}?${fullPayload}`, {
+          method, headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost }
+        });
         const text = await res.text();
-        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          data = JSON.parse(text);
-          isSuccess = true;
-          console.log('[Trade] ✅ Localhost Proxy OK');
-        }
-      } catch (err) {
-        console.warn('[Trade] ⚠️ Localhost Proxy:', err.message);
-      }
+        if (res.ok && text && !text.trim().startsWith('<')) return JSON.parse(text);
+      } catch (_) {}
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // INTENTO 3: Directo a Binance (GET sin problema de CORS, POST puede fallar)
-    // ─────────────────────────────────────────────────────────────────────────
-    if (!isSuccess) {
+    // Intento 2: localhost:3000 desde cualquier página (Chrome permite llamadas a localhost desde HTTPS)
+    try {
+      const res  = await fetch(`http://localhost:3000${proxyPrefix}${path}?${fullPayload}`, {
+        method, headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost },
+        signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined
+      });
+      const text = await res.text();
+      if (res.ok && text && !text.trim().startsWith('<')) {
+        console.log('[Trade] ✅ localhost:3000 proxy OK');
+        return JSON.parse(text);
+      }
+    } catch (_) {}
+
+    // Intento 3: Directo a Binance (GET sin problemas de CORS, POST puede fallar)
+    try {
+      const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
+      const text = await res.text();
+      if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        const data = JSON.parse(text);
+        if (data && data.code && data.code !== 200 && data.msg) {
+          throw new Error(`Binance (${data.code}): ${data.msg}`);
+        }
+        console.log('[Trade] ✅ Directo Binance OK');
+        return data;
+      }
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    } catch (err) {
+      throw new Error(`Error de conexión con Binance (${err.message})`);
+    }
+  }
+
+  // ─── Router principal: WS para órdenes autenticadas, HTTP para consultas ─────
+
+  async request(method, path, params = {}) {
+    if (!this.isConfigured()) {
+      throw new Error('API Keys no configuradas. Ve a ⚙️ Configurar API.');
+    }
+
+    // Endpoints que requieren POST/DELETE autenticado → usar WebSocket API (sin CORS)
+    const WS_ENDPOINTS = {
+      'POST /fapi/v1/order':              'order.place',
+      'DELETE /fapi/v1/order':            'order.cancel',
+      'POST /fapi/v1/leverage':           'account.changeInitialLeverage',
+      'GET /fapi/v2/account':             'account.status',
+      'GET /fapi/v1/positionSide/dual':   'account.getPositionSideDual',
+    };
+
+    const wsMethod = WS_ENDPOINTS[`${method} ${path}`];
+
+    if (wsMethod) {
       try {
-        const url = `${directBase}${path}?${fullPayload}`;
-        const res = await fetch(url, { method, headers: corsHeaders });
-        lastStatusCode = res.status;
-        const text = await res.text();
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          data = JSON.parse(text);
-          isSuccess = true;
-          console.log('[Trade] ✅ Directo Binance OK');
-        } else {
-          lastErrorMsg = `Binance directo HTTP ${res.status}`;
-        }
-      } catch (err) {
-        lastErrorMsg = err.message;
-        console.warn('[Trade] ⚠️ Directo Binance falló:', err.message);
+        const result = await this.wsRequest(wsMethod, params);
+        console.log(`[Trade] ✅ WS OK: ${wsMethod}`);
+        return result;
+      } catch (wsErr) {
+        console.warn(`[Trade] ⚠️ WS ${wsMethod} falló (${wsErr.message}), intentando HTTP...`);
+        // Si el error es de Binance (no de conexión), lanzarlo directamente
+        if (wsErr.message.startsWith('Binance')) throw wsErr;
+        // Si es error de conexión WS, caer al HTTP como respaldo
       }
     }
 
-    if (!isSuccess || !data) {
-      throw new Error(`Error de conexión con Binance (${lastStatusCode || 500}): ${lastErrorMsg || 'Failed to fetch'}`);
-    }
-
-    if (data && data.code && data.code !== 200 && data.msg) {
-      throw new Error(`Binance (${data.code}): ${data.msg}`);
-    }
-
-    return data;
+    // Para todo lo demás (GET públicos, algoOrders, etc.): usar HTTP directo
+    return this.httpRequest(method, path, params);
   }
 
   // ─── Consulta de Cuenta ─────────────────────────────────────────────────────
@@ -225,8 +291,10 @@ class BinanceTrade {
   async getAccountBalance() {
     try {
       const data = await this.request('GET', '/fapi/v2/account');
-      const usdt = data.assets?.find(a => a.asset === 'USDT');
-      return usdt ? parseFloat(usdt.availableBalance) : 100;
+      // WS devuelve array de assets directamente
+      const assets = Array.isArray(data) ? data : data.assets;
+      const usdt = assets?.find(a => a.asset === 'USDT');
+      return usdt ? parseFloat(usdt.availableBalance || usdt.balance || 100) : 100;
     } catch (e) {
       return 100;
     }
@@ -250,7 +318,10 @@ class BinanceTrade {
     let minQty = stepSize;
 
     try {
-      const data = await this.request('GET', '/fapi/v1/exchangeInfo');
+      // exchangeInfo es un GET público — no necesita autenticación
+      const url = `${this.getBaseUrl()}/fapi/v1/exchangeInfo`;
+      const res = await fetch(url);
+      const data = await res.json();
       const info = data.symbols?.find(s => s.symbol === cleanSym);
       if (info) {
         const priceFilter = info.filters?.find(f => f.filterType === 'PRICE_FILTER');
@@ -261,7 +332,7 @@ class BinanceTrade {
         }
         if (lotFilter && lotFilter.stepSize) {
           stepSize = parseFloat(lotFilter.stepSize);
-          minQty = parseFloat(lotFilter.minQty || stepSize);
+          minQty   = parseFloat(lotFilter.minQty || stepSize);
         }
       }
     } catch (e) {
@@ -342,20 +413,20 @@ class BinanceTrade {
       throw new Error(`Binance no confirmó la orden de entrada: ${JSON.stringify(entryOrder)}`);
     }
 
-    let slOrderId = null;
-    let tpOrderId = null;
+    let slOrderId  = null;
+    let tpOrderId  = null;
     let slErrorMsg = null;
     let tpErrorMsg = null;
 
     // 5. Stop Loss via Algo Order API (/fapi/v1/algoOrder)
     const slParams = {
-      algoType: 'CONDITIONAL',
-      symbol: cleanSym,
-      side: closeSide,
-      type: 'STOP_MARKET',
+      algoType:     'CONDITIONAL',
+      symbol:       cleanSym,
+      side:         closeSide,
+      type:         'STOP_MARKET',
       triggerPrice: formattedStop,
-      workingType: 'MARK_PRICE',
-      quantity: finalQty
+      workingType:  'MARK_PRICE',
+      quantity:     finalQty
     };
     if (isDual) {
       slParams.positionSide = positionSide;
@@ -364,22 +435,22 @@ class BinanceTrade {
     }
 
     try {
-      const slOrder = await this.request('POST', '/fapi/v1/algoOrder', slParams);
+      const slOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', slParams);
       slOrderId = slOrder.algoId || slOrder.orderId || 'ALGO_SL';
     } catch (slErr) {
       console.warn('[Trade SL Fallback closePosition]', slErr.message);
       try {
         const slParams2 = {
-          algoType: 'CONDITIONAL',
-          symbol: cleanSym,
-          side: closeSide,
-          type: 'STOP_MARKET',
+          algoType:     'CONDITIONAL',
+          symbol:       cleanSym,
+          side:         closeSide,
+          type:         'STOP_MARKET',
           triggerPrice: formattedStop,
-          workingType: 'MARK_PRICE',
+          workingType:  'MARK_PRICE',
           closePosition: 'true'
         };
         if (isDual) slParams2.positionSide = positionSide;
-        const slOrder2 = await this.request('POST', '/fapi/v1/algoOrder', slParams2);
+        const slOrder2 = await this.httpRequest('POST', '/fapi/v1/algoOrder', slParams2);
         slOrderId = slOrder2.algoId || slOrder2.orderId || 'ALGO_SL';
       } catch (e2) {
         slErrorMsg = e2.message;
@@ -389,13 +460,13 @@ class BinanceTrade {
 
     // 6. Take Profit Final 1:3 via Algo Order API (/fapi/v1/algoOrder)
     const tpParams = {
-      algoType: 'CONDITIONAL',
-      symbol: cleanSym,
-      side: closeSide,
-      type: 'TAKE_PROFIT_MARKET',
+      algoType:     'CONDITIONAL',
+      symbol:       cleanSym,
+      side:         closeSide,
+      type:         'TAKE_PROFIT_MARKET',
       triggerPrice: formattedTP,
-      workingType: 'MARK_PRICE',
-      quantity: finalQty
+      workingType:  'MARK_PRICE',
+      quantity:     finalQty
     };
     if (isDual) {
       tpParams.positionSide = positionSide;
@@ -404,22 +475,22 @@ class BinanceTrade {
     }
 
     try {
-      const tpOrder = await this.request('POST', '/fapi/v1/algoOrder', tpParams);
+      const tpOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', tpParams);
       tpOrderId = tpOrder.algoId || tpOrder.orderId || 'ALGO_TP';
     } catch (tpErr) {
       console.warn('[Trade TP Fallback closePosition]', tpErr.message);
       try {
         const tpParams2 = {
-          algoType: 'CONDITIONAL',
-          symbol: cleanSym,
-          side: closeSide,
-          type: 'TAKE_PROFIT_MARKET',
+          algoType:     'CONDITIONAL',
+          symbol:       cleanSym,
+          side:         closeSide,
+          type:         'TAKE_PROFIT_MARKET',
           triggerPrice: formattedTP,
-          workingType: 'MARK_PRICE',
+          workingType:  'MARK_PRICE',
           closePosition: 'true'
         };
         if (isDual) tpParams2.positionSide = positionSide;
-        const tpOrder2 = await this.request('POST', '/fapi/v1/algoOrder', tpParams2);
+        const tpOrder2 = await this.httpRequest('POST', '/fapi/v1/algoOrder', tpParams2);
         tpOrderId = tpOrder2.algoId || tpOrder2.orderId || 'ALGO_TP';
       } catch (e2) {
         tpErrorMsg = e2.message;
@@ -428,14 +499,14 @@ class BinanceTrade {
     }
 
     return {
-      mode: this.config.mode,
-      symbol: cleanSym,
-      type: signal.type,
-      quantity: finalQty,
+      mode:         this.config.mode,
+      symbol:       cleanSym,
+      type:         signal.type,
+      quantity:     finalQty,
       leverage,
-      entryPrice: signal.entry,
-      stopPrice: formattedStop,
-      takeProfit: formattedTP,
+      entryPrice:   signal.entry,
+      stopPrice:    formattedStop,
+      takeProfit:   formattedTP,
       entryOrderId: entryOrder.orderId,
       slOrderId,
       tpOrderId,
@@ -450,24 +521,24 @@ class BinanceTrade {
   async moveToBreakeven(symbol, entryPrice, type) {
     if (!this.isConfigured()) return false;
     const cleanSym = symbol.replace('/', '').toUpperCase();
-    const isLong = type === 'LONG';
+    const isLong   = type === 'LONG';
     const closeSide = isLong ? 'SELL' : 'BUY';
-    const filters = await this.getSymbolFilters(cleanSym);
+    const filters  = await this.getSymbolFilters(cleanSym);
 
     const isDual = (await this.getPositionMode()) === 'HEDGE';
     const positionSide = isDual ? (isLong ? 'LONG' : 'SHORT') : 'BOTH';
 
     const bePriceNum = isLong ? entryPrice * 1.0008 : entryPrice * 0.9992;
-    const bePrice = bePriceNum.toFixed(filters.priceDecimals);
+    const bePrice    = bePriceNum.toFixed(filters.priceDecimals);
 
     try {
       // 1. Cancelar órdenes de Stop Loss previas en Algo Orders
       try {
-        const openAlgos = await this.request('GET', '/fapi/v1/openAlgoOrders', { symbol: cleanSym });
+        const openAlgos = await this.httpRequest('GET', '/fapi/v1/openAlgoOrders', { symbol: cleanSym });
         if (Array.isArray(openAlgos)) {
           for (const ord of openAlgos) {
             if (ord.algoType === 'STOP_MARKET' || ord.type === 'STOP_MARKET') {
-              await this.request('DELETE', '/fapi/v1/algoOrder', { algoId: ord.algoId });
+              await this.httpRequest('DELETE', '/fapi/v1/algoOrder', { algoId: ord.algoId });
             }
           }
         }
@@ -475,17 +546,17 @@ class BinanceTrade {
 
       // 2. Colocar nuevo Stop Loss a Breakeven via Algo API
       const beParams = {
-        algoType: 'CONDITIONAL',
-        symbol: cleanSym,
-        side: closeSide,
-        type: 'STOP_MARKET',
+        algoType:     'CONDITIONAL',
+        symbol:       cleanSym,
+        side:         closeSide,
+        type:         'STOP_MARKET',
         triggerPrice: bePrice,
         closePosition: 'true',
-        workingType: 'MARK_PRICE'
+        workingType:  'MARK_PRICE'
       };
       if (isDual) beParams.positionSide = positionSide;
 
-      const slOrder = await this.request('POST', '/fapi/v1/algoOrder', beParams);
+      const slOrder = await this.httpRequest('POST', '/fapi/v1/algoOrder', beParams);
       return slOrder;
     } catch (e) {
       console.warn('[BinanceTrade] Error moviendo a BE:', e.message);
