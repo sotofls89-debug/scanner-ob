@@ -224,7 +224,7 @@ class CryptoScanner {
     return this.isEnabled;
   }
 
-  addUserExecutedTrade(signal) {
+  addUserExecutedTrade(signal, extra = {}) {
     if (!signal || !signal.symbol) return;
     const exists = this.userExecutedTrades.some(t => t.id === signal.id && t.status === 'OPEN');
     if (!exists) {
@@ -235,6 +235,8 @@ class CryptoScanner {
         entry: signal.entry,
         stop: signal.stop,
         takeProfit: signal.takeProfit,
+        quantity: extra.quantity || signal.quantity || 0,
+        leverage: extra.leverage || signal.leverage || 2,
         status: 'OPEN',
         executedAt: Date.now()
       });

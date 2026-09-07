@@ -19,6 +19,47 @@ document.addEventListener('DOMContentLoaded', () => {
   let userCapital = parseFloat(localStorage.getItem('user_trading_capital')) || 500;
   let userRiskPct = parseFloat(localStorage.getItem('user_trading_risk_pct')) || 1.0;
 
+  // Mapa de Posiciones en Tiempo Real de Binance Futuros
+  let binancePositionsMap = {};
+
+  async function syncBinancePositions() {
+    if (!binanceTrade || !binanceTrade.isConfigured()) return;
+    try {
+      const positions = await binanceTrade.getOpenPositions();
+      if (Array.isArray(positions)) {
+        const newMap = {};
+        positions.forEach(p => {
+          newMap[p.symbol] = p;
+        });
+        binancePositionsMap = newMap;
+
+        // Auto-sincronizar posiciones existentes de Binance con el scanner
+        positions.forEach(p => {
+          const fmtSymbol = p.symbol.endsWith('USDT') ? `${p.symbol.replace('USDT', '')}/USDT` : p.symbol;
+          if (!scanner.hasUserOpenTrade(fmtSymbol)) {
+            scanner.addUserExecutedTrade({
+              id: `binance_${p.symbol}`,
+              symbol: fmtSymbol,
+              type: p.side,
+              entry: p.entryPrice,
+              stop: 0,
+              takeProfit: 0
+            }, {
+              quantity: p.amount,
+              leverage: p.leverage
+            });
+          }
+        });
+      }
+    } catch (err) {
+      // Silencioso
+    }
+  }
+
+  // Polling de posiciones cada 8s
+  setTimeout(syncBinancePositions, 1500);
+  setInterval(syncBinancePositions, 8000);
+
   // Inicializar TradeTracker con Callback de Eventos en Vivo
   const tradeTracker = new TradeTracker({
     onTradeEvent: (event) => {
@@ -659,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       results.forEach(item => {
         const tr = document.createElement('tr');
-        tr.className = 'crypto-table-row text-xs cursor-pointer group';
+        tr.className = 'crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30';
         const cleanPair = item.symbol.replace('/', '').toUpperCase();
         const binanceFuturesUrl = `https://www.binance.com/es/futures/${cleanPair}`;
 
@@ -670,24 +711,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let signalBadge = `<span class="text-gray-600 font-mono">-</span>`;
         const userTrade = scanner.getUserOpenTrade(item.symbol);
+        const binancePos = binancePositionsMap[cleanPair];
+        const isTradeActive = Boolean(userTrade || binancePos);
 
-        if (userTrade) {
+        if (isTradeActive) {
           signalBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">✓ EN CURSO</span>`;
         } else if (item.signal && !scanner.isSignalExecutedOrDismissed(item.signal.id, item.symbol)) {
           const isLong = item.signal.type === 'LONG';
           signalBadge = `<span class="font-extrabold ${isLong ? 'text-amber-400' : 'text-amber-500'} font-mono">${item.signal.type}</span>`;
         }
 
+        // Columna PnL (%ROI) — Solamente a los criptos en curso
+        let pnlHtml = `<span class="text-gray-600 font-mono text-xs">-</span>`;
+
+        if (isTradeActive) {
+          const isLong = (binancePos ? binancePos.side : userTrade?.type) === 'LONG';
+          const entryPrice = binancePos ? binancePos.entryPrice : Number(userTrade?.entry || 0);
+          const currentPrice = Number(item.price || 0);
+          const lev = binancePos ? binancePos.leverage : (Number(userTrade?.leverage) || 2);
+          const amount = binancePos ? binancePos.amount : (Number(userTrade?.quantity) || 0);
+          const margin = binancePos && binancePos.margin > 0 ? binancePos.margin : (entryPrice > 0 && amount > 0 ? (entryPrice * amount) / lev : 0);
+
+          let pnl = 0;
+          let roi = 0;
+
+          if (entryPrice > 0 && currentPrice > 0) {
+            const diff = isLong ? (currentPrice - entryPrice) : (entryPrice - currentPrice);
+            if (amount > 0) {
+              pnl = diff * amount;
+            } else if (binancePos && typeof binancePos.unrealizedProfit === 'number') {
+              pnl = binancePos.unrealizedProfit;
+            }
+            if (margin > 0) {
+              roi = (pnl / margin) * 100;
+            } else if (entryPrice > 0) {
+              roi = (diff / entryPrice) * lev * 100;
+            }
+          } else if (binancePos) {
+            pnl = binancePos.unrealizedProfit || 0;
+            roi = binancePos.roi || 0;
+          }
+
+          const isPositive = pnl >= 0;
+          const pnlSign = isPositive ? '+' : '';
+          const roiSign = isPositive ? '+' : '';
+          const colorClass = isPositive ? 'text-emerald-400' : 'text-rose-400';
+
+          pnlHtml = `
+            <div class="flex flex-col items-end leading-tight">
+              <span class="font-mono text-xs font-bold ${colorClass}">${pnlSign}${pnl.toFixed(2)} USDT</span>
+              <span class="font-mono text-[10px] font-semibold ${colorClass}">${roiSign}${roi.toFixed(2)}%</span>
+            </div>
+          `;
+        }
+
         tr.innerHTML = `
-          <td class="py-3 px-4 font-bold text-gray-200 group-hover:text-amber-400 transition-colors">
+          <td class="py-2.5 px-3 font-bold text-gray-200 group-hover:text-amber-400 transition-colors">
             <a href="${binanceFuturesUrl}" target="_blank" class="flex items-center gap-1.5">
               <span>${item.base}</span>
               <span class="text-[10px] text-gray-500 group-hover:text-amber-400 font-normal">↗</span>
             </a>
           </td>
-          <td class="py-3 px-4 font-mono text-gray-300">${formatPrice(item.price, item.symbol)}</td>
-          <td class="py-3 px-4 text-[10px] font-bold ${trendClass}">4H ${item.trend}</td>
-          <td class="py-3 px-4 text-right font-bold">${signalBadge}</td>
+          <td class="py-2.5 px-3 font-mono text-gray-300 text-xs">${formatPrice(item.price, item.symbol)}</td>
+          <td class="py-2.5 px-3 text-[10px] font-bold ${trendClass}">4H ${item.trend}</td>
+          <td class="py-2.5 px-3 text-right">${pnlHtml}</td>
+          <td class="py-2.5 px-3 text-right font-bold">${signalBadge}</td>
         `;
 
         tbody.appendChild(tr);
@@ -1478,7 +1566,11 @@ document.addEventListener('DOMContentLoaded', () => {
       tradeTracker.registerSignal(targetSignal);
 
       // 2. Registrar orden REAL del usuario para marcar ✓ EN CURSO únicamente en este activo
-      scanner.addUserExecutedTrade(targetSignal);
+      scanner.addUserExecutedTrade(targetSignal, {
+        quantity: result.quantity || pos.quantity,
+        leverage: result.leverage || leverage
+      });
+      setTimeout(syncBinancePositions, 1000);
 
       if (window._cloudSync) {
         window._cloudSync.pushToCloud({

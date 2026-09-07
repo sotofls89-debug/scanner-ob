@@ -311,6 +311,40 @@ class BinanceTrade {
     }
   }
 
+  async getOpenPositions() {
+    if (!this.isConfigured()) return [];
+    try {
+      const data = await this.request('GET', '/fapi/v2/account');
+      const rawPositions = Array.isArray(data?.positions)
+        ? data.positions
+        : (Array.isArray(data?.result?.positions) ? data.result.positions : (Array.isArray(data) ? data : []));
+
+      return rawPositions
+        .filter(p => p && parseFloat(p.positionAmt) !== 0)
+        .map(p => {
+          const amt = parseFloat(p.positionAmt);
+          const entryPrice = parseFloat(p.entryPrice);
+          const unPnl = parseFloat(p.unrealizedProfit || 0);
+          const margin = parseFloat(p.initialMargin || p.positionInitialMargin || p.isolatedWallet || 0);
+          const lev = parseFloat(p.leverage || 2);
+          const roi = margin > 0 ? (unPnl / margin) * 100 : (entryPrice > 0 && Math.abs(amt) > 0 ? (unPnl / ((entryPrice * Math.abs(amt)) / lev)) * 100 : 0);
+          return {
+            symbol: p.symbol,
+            side: amt > 0 ? 'LONG' : 'SHORT',
+            amount: Math.abs(amt),
+            entryPrice,
+            unrealizedProfit: unPnl,
+            margin,
+            leverage: lev,
+            roi
+          };
+        });
+    } catch (e) {
+      console.warn('[BinanceTrade] Error obteniendo posiciones:', e.message);
+      return [];
+    }
+  }
+
   async getSymbolFilters(symbol) {
     const cleanSym = symbol.replace('/', '').toUpperCase();
     const defaultPricePrecisions = {
