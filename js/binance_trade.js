@@ -104,8 +104,39 @@ class BinanceTrade {
     let lastStatusCode = 0;
     let lastErrorMsg = '';
 
-    // Intento 1: Si estamos en Netlify (o cualquier host web con proxy inverso)
-    if (typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
+    // ─── Intento 0: Proxy Netlify en la Nube ────────────────────────────────────
+    // Siempre el PRIMERO. Funciona desde CUALQUIER red (datos móviles, WiFi, etc.)
+    // No depende del PC local. El proxy Netlify tiene CORS abierto (Allow-Origin: *)
+    const NETLIFY_PROXY = 'https://jade-swan-b6ce94.netlify.app';
+    try {
+      const netlifyCloudUrl = `${NETLIFY_PROXY}${proxyPrefix}${path}?${fullPayload}`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000); // 8s timeout
+      const res = await fetch(netlifyCloudUrl, {
+        method,
+        headers: {
+          'X-MBX-APIKEY': apiKey,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      lastStatusCode = res.status;
+      const text = await res.text();
+      if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        data = JSON.parse(text);
+        isSuccess = true;
+        console.log('[Trade] ✅ Netlify Cloud Proxy OK');
+      } else if (!res.ok) {
+        lastErrorMsg = `Netlify proxy HTTP ${res.status}`;
+        console.warn('[Trade Netlify Cloud]:', lastErrorMsg, text?.slice(0, 100));
+      }
+    } catch (err) {
+      console.warn('[Trade Netlify Cloud fallando, intentando siguiente]:', err.message);
+    }
+
+    // ─── Intento 1: Netlify relativo (si la app ya corre en Netlify) ─────────────
+    if (!isSuccess && typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
       try {
         const netlifyUrl = `${proxyPrefix}${path}?${fullPayload}`;
         const res = await fetch(netlifyUrl, {
@@ -120,13 +151,14 @@ class BinanceTrade {
         if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
+          console.log('[Trade] ✅ Netlify Relativo OK');
         }
       } catch (err) {
         console.warn('[Trade Netlify Proxy]:', err.message);
       }
     }
 
-    // Intento 2: Si estamos en localhost o servidor Node local / Wi-Fi IP
+    // ─── Intento 2: Localhost o servidor Node local / Wi-Fi IP ───────────────────
     const isLocalServer = typeof window !== 'undefined' && (
       window.location.hostname === 'localhost' || 
       window.location.hostname === '127.0.0.1' || 
@@ -148,13 +180,14 @@ class BinanceTrade {
         if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
+          console.log('[Trade] ✅ Localhost/LAN Proxy OK');
         }
       } catch (err) {
         console.warn('[Trade Localhost/LAN Proxy]:', err.message);
       }
     }
 
-    // Intento 3: Si el móvil está en GitHub Pages o Netlify pero en la misma red Wi-Fi de la PC
+    // ─── Intento 3: Puente LAN directo (misma red WiFi que el PC) ───────────────
     if (!isSuccess) {
       try {
         const lanBridgeUrl = `http://192.168.100.3:3000${proxyPrefix}${path}?${fullPayload}`;
@@ -168,11 +201,12 @@ class BinanceTrade {
         if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
+          console.log('[Trade] ✅ LAN Bridge OK');
         }
       } catch (bridgeErr) {}
     }
 
-    // Intento 4: Directo Oficial Binance Futuros
+    // ─── Intento 4: Directo a Binance (último recurso, puede fallar por CORS en POST) ───
     if (!isSuccess) {
       try {
         const fetchUrl = `${directBase}${path}?${fullPayload}`;
@@ -190,6 +224,7 @@ class BinanceTrade {
           try {
             data = JSON.parse(text);
             isSuccess = true;
+            console.log('[Trade] ✅ Directo Binance OK');
           } catch (e) {
             lastErrorMsg = text;
           }
@@ -203,7 +238,7 @@ class BinanceTrade {
     }
 
     if (!isSuccess || !data) {
-      throw new Error(`Error de conexión con Binance (${lastStatusCode || 500}): ${lastErrorMsg || 'Verifica conexión o servidor local'}`);
+      throw new Error(`Error de conexión con Binance (${lastStatusCode || 500}): ${lastErrorMsg || 'Failed to fetch'}`);
     }
 
     if (data && data.code && data.code !== 200 && data.msg) {
