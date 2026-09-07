@@ -1,18 +1,11 @@
-[[redirects]]
-  from = "/proxy-binance-demo/*"
-  to = "https://testnet.binancefuture.com/:splat"
-  status = 200
+[build]
+  publish = "."
 
-[[redirects]]
-  from = "/proxy-binance-real/*"
-  to = "https://fapi.binance.com/:splat"
-  status = 200
+# Edge Functions manejan: /proxy-binance-demo/*, /proxy-binance-real/*, /proxy-binance/*
+# (definido en netlify/edge-functions/binance-proxy.js → config.path)
+# Los redirects simples NO soportan POST con headers personalizados (X-MBX-APIKEY)
 
-[[redirects]]
-  from = "/proxy-binance/*"
-  to = "https://fapi.binance.com/:splat"
-  status = 200
-
+# SPA fallback — todo lo que no sea un archivo va a index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -23,4 +16,4 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "*"
-    Access-Control-Allow-Methods = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"

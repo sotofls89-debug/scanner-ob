@@ -86,7 +86,6 @@ class BinanceTrade {
 
     const apiKey = this.getApiKey();
     const timestamp = Date.now();
-    // Parámetros oficiales de Binance Futuros (NUNCA incluir apiKey en los parámetros de la URL)
     const allParams = { ...params, timestamp, recvWindow: 60000 };
     const qs = Object.entries(allParams)
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -104,64 +103,66 @@ class BinanceTrade {
     let lastStatusCode = 0;
     let lastErrorMsg = '';
 
-    // ─── Intento 0: Proxy Netlify en la Nube ────────────────────────────────────
-    // Siempre el PRIMERO. Funciona desde CUALQUIER red (datos móviles, WiFi, etc.)
-    // No depende del PC local. El proxy Netlify tiene CORS abierto (Allow-Origin: *)
-    const NETLIFY_PROXY = 'https://jade-swan-b6ce94.netlify.app';
-    try {
-      const netlifyCloudUrl = `${NETLIFY_PROXY}${proxyPrefix}${path}?${fullPayload}`;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000); // 8s timeout
-      const res = await fetch(netlifyCloudUrl, {
-        method,
-        headers: {
-          'X-MBX-APIKEY': apiKey,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-      lastStatusCode = res.status;
-      const text = await res.text();
-      if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-        data = JSON.parse(text);
-        isSuccess = true;
-        console.log('[Trade] ✅ Netlify Cloud Proxy OK');
-      } else if (!res.ok) {
-        lastErrorMsg = `Netlify proxy HTTP ${res.status}`;
-        console.warn('[Trade Netlify Cloud]:', lastErrorMsg, text?.slice(0, 100));
-      }
-    } catch (err) {
-      console.warn('[Trade Netlify Cloud fallando, intentando siguiente]:', err.message);
-    }
+    const corsHeaders = {
+      'X-MBX-APIKEY': apiKey,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    };
 
-    // ─── Intento 1: Netlify relativo (si la app ya corre en Netlify) ─────────────
-    if (!isSuccess && typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // INTENTO 0: Netlify Edge Function en la nube (https://jade-swan-b6ce94.netlify.app)
+    // ✅ Siempre el PRIMERO — funciona desde GitHub Pages, datos móviles, cualquier red
+    // ✅ Edge Function reenvía el método (POST/GET) y el header X-MBX-APIKEY completo
+    // ✅ No depende del PC local ni de la red WiFi
+    // ─────────────────────────────────────────────────────────────────────────
+    if (!isSuccess) {
       try {
-        const netlifyUrl = `${proxyPrefix}${path}?${fullPayload}`;
-        const res = await fetch(netlifyUrl, {
-          method,
-          headers: {
-            'X-MBX-APIKEY': apiKey,
-            'Content-Type': 'application/x-www-form-urlencoded'
-          }
-        });
+        const NETLIFY = 'https://jade-swan-b6ce94.netlify.app';
+        const url = `${NETLIFY}${proxyPrefix}${path}?${fullPayload}`;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 9000);
+        const res = await fetch(url, { method, headers: corsHeaders, signal: ctrl.signal });
+        clearTimeout(timer);
         lastStatusCode = res.status;
         const text = await res.text();
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          data = JSON.parse(text);
+          isSuccess = true;
+          console.log('[Trade] ✅ Netlify Edge Function OK');
+        } else {
+          lastErrorMsg = `Netlify ${res.status}: ${text?.slice(0, 120)}`;
+          console.warn('[Trade] ⚠️ Netlify Edge:', lastErrorMsg);
+        }
+      } catch (err) {
+        console.warn('[Trade] ⚠️ Netlify Edge falló:', err.message);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // INTENTO 1: Si la app ya corre directamente en Netlify (ruta relativa, más rápida)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (!isSuccess && typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
+      try {
+        const url = `${proxyPrefix}${path}?${fullPayload}`;
+        const res = await fetch(url, { method, headers: corsHeaders });
+        lastStatusCode = res.status;
+        const text = await res.text();
+        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
           console.log('[Trade] ✅ Netlify Relativo OK');
         }
       } catch (err) {
-        console.warn('[Trade Netlify Proxy]:', err.message);
+        console.warn('[Trade] ⚠️ Netlify Relativo:', err.message);
       }
     }
 
-    // ─── Intento 2: Localhost o servidor Node local / Wi-Fi IP ───────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // INTENTO 2: Servidor Node.js local (localhost:3000)
+    // Solo activo cuando se accede desde localhost o 192.168.x (PC local o LAN)
+    // ─────────────────────────────────────────────────────────────────────────
     const isLocalServer = typeof window !== 'undefined' && (
-      window.location.hostname === 'localhost' || 
-      window.location.hostname === '127.0.0.1' || 
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
       window.location.hostname.startsWith('192.168.') ||
       window.location.hostname.startsWith('10.') ||
       window.location.port === '3000'
@@ -169,71 +170,42 @@ class BinanceTrade {
 
     if (!isSuccess && isLocalServer) {
       try {
-        const origin = window.location.origin.includes(':3000') ? window.location.origin : 'http://localhost:3000';
-        const localUrl = `${origin}${proxyPrefix}${path}?${fullPayload}`;
-        const res = await fetch(localUrl, {
-          method,
-          headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost }
-        });
+        const origin = window.location.origin.includes(':3000')
+          ? window.location.origin
+          : `${window.location.protocol}//${window.location.hostname}:3000`;
+        const url = `${origin}${proxyPrefix}${path}?${fullPayload}`;
+        const res = await fetch(url, { method, headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost } });
         lastStatusCode = res.status;
         const text = await res.text();
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        if (res.ok && text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
-          console.log('[Trade] ✅ Localhost/LAN Proxy OK');
+          console.log('[Trade] ✅ Localhost Proxy OK');
         }
       } catch (err) {
-        console.warn('[Trade Localhost/LAN Proxy]:', err.message);
+        console.warn('[Trade] ⚠️ Localhost Proxy:', err.message);
       }
     }
 
-    // ─── Intento 3: Puente LAN directo (misma red WiFi que el PC) ───────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // INTENTO 3: Directo a Binance (GET sin problema de CORS, POST puede fallar)
+    // ─────────────────────────────────────────────────────────────────────────
     if (!isSuccess) {
       try {
-        const lanBridgeUrl = `http://192.168.100.3:3000${proxyPrefix}${path}?${fullPayload}`;
-        const res = await fetch(lanBridgeUrl, {
-          method,
-          headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost },
-          signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
-        });
+        const url = `${directBase}${path}?${fullPayload}`;
+        const res = await fetch(url, { method, headers: corsHeaders });
         lastStatusCode = res.status;
         const text = await res.text();
         if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
           data = JSON.parse(text);
           isSuccess = true;
-          console.log('[Trade] ✅ LAN Bridge OK');
-        }
-      } catch (bridgeErr) {}
-    }
-
-    // ─── Intento 4: Directo a Binance (último recurso, puede fallar por CORS en POST) ───
-    if (!isSuccess) {
-      try {
-        const fetchUrl = `${directBase}${path}?${fullPayload}`;
-        const res = await fetch(fetchUrl, {
-          method,
-          headers: {
-            'X-MBX-APIKEY': apiKey,
-            'Content-Type': 'application/x-www-form-urlencoded'
-          }
-        });
-        lastStatusCode = res.status;
-        const text = await res.text();
-
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          try {
-            data = JSON.parse(text);
-            isSuccess = true;
-            console.log('[Trade] ✅ Directo Binance OK');
-          } catch (e) {
-            lastErrorMsg = text;
-          }
+          console.log('[Trade] ✅ Directo Binance OK');
         } else {
-          lastErrorMsg = `HTTP ${res.status}: ${res.statusText}`;
+          lastErrorMsg = `Binance directo HTTP ${res.status}`;
         }
       } catch (err) {
         lastErrorMsg = err.message;
-        console.warn('[Trade Directo falló]:', err.message);
+        console.warn('[Trade] ⚠️ Directo Binance falló:', err.message);
       }
     }
 
