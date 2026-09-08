@@ -348,18 +348,24 @@ class BinanceTrade {
   async getSymbolFilters(symbol) {
     const cleanSym = symbol.replace('/', '').toUpperCase();
     const defaultPricePrecisions = {
-      'BTCUSDT': 2, 'ETHUSDT': 2, 'BNBUSDT': 2, 'SOLUSDT': 2, 'XRPUSDT': 4,
+      'BTCUSDT': 1, 'ETHUSDT': 2, 'BNBUSDT': 2, 'SOLUSDT': 2, 'XRPUSDT': 4,
       'ADAUSDT': 4, 'AVAXUSDT': 2, 'LINKUSDT': 3, 'DOGEUSDT': 5, 'TONUSDT': 4,
-      'DOTUSDT': 4, 'LTCUSDT': 2, 'NEARUSDT': 3, 'SUIUSDT': 4, 'APTUSDT': 3
+      'DOTUSDT': 3, 'LTCUSDT': 2, 'NEARUSDT': 3, 'SUIUSDT': 4, 'APTUSDT': 3
     };
     const defaultStepSizes = {
       'BTCUSDT': 0.001, 'ETHUSDT': 0.001, 'BNBUSDT': 0.01, 'SOLUSDT': 0.01, 'XRPUSDT': 0.1,
       'ADAUSDT': 1, 'AVAXUSDT': 0.1, 'LINKUSDT': 0.01, 'DOGEUSDT': 1, 'TONUSDT': 0.1,
       'DOTUSDT': 0.1, 'LTCUSDT': 0.001, 'NEARUSDT': 0.1, 'SUIUSDT': 0.1, 'APTUSDT': 0.1
     };
+    const defaultTickSizes = {
+      'BTCUSDT': 0.1, 'ETHUSDT': 0.01, 'BNBUSDT': 0.01, 'SOLUSDT': 0.01, 'XRPUSDT': 0.0001,
+      'ADAUSDT': 0.0001, 'AVAXUSDT': 0.01, 'LINKUSDT': 0.001, 'DOGEUSDT': 0.00001, 'TONUSDT': 0.0001,
+      'DOTUSDT': 0.001, 'LTCUSDT': 0.01, 'NEARUSDT': 0.001, 'SUIUSDT': 0.0001, 'APTUSDT': 0.001
+    };
 
     let priceDecimals = defaultPricePrecisions[cleanSym] !== undefined ? defaultPricePrecisions[cleanSym] : 4;
     let stepSize = defaultStepSizes[cleanSym] !== undefined ? defaultStepSizes[cleanSym] : 0.001;
+    let tickSize = defaultTickSizes[cleanSym] !== undefined ? defaultTickSizes[cleanSym] : 0.01;
     let minQty = stepSize;
 
     try {
@@ -372,8 +378,8 @@ class BinanceTrade {
         const priceFilter = info.filters?.find(f => f.filterType === 'PRICE_FILTER');
         const lotFilter   = info.filters?.find(f => f.filterType === 'LOT_SIZE');
         if (priceFilter && priceFilter.tickSize) {
-          const tick = parseFloat(priceFilter.tickSize);
-          if (tick > 0) priceDecimals = Math.max(0, -Math.floor(Math.log10(tick)));
+          tickSize = parseFloat(priceFilter.tickSize);
+          if (tickSize > 0) priceDecimals = Math.max(0, -Math.floor(Math.log10(tickSize) + 0.00001));
         }
         if (lotFilter && lotFilter.stepSize) {
           stepSize = parseFloat(lotFilter.stepSize);
@@ -385,7 +391,17 @@ class BinanceTrade {
     }
 
     const qtyDecimals = stepSize.toString().includes('.') ? stepSize.toString().split('.')[1].length : 0;
-    return { priceDecimals, stepSize, minQty, qtyDecimals };
+    return { priceDecimals, stepSize, tickSize, minQty, qtyDecimals };
+  }
+
+  formatPrice(price, tickSize, decimals) {
+    const p = parseFloat(price);
+    if (isNaN(p)) return '0';
+    if (tickSize > 0) {
+      const rounded = Math.round(p / tickSize) * tickSize;
+      return rounded.toFixed(decimals);
+    }
+    return p.toFixed(decimals);
   }
 
   async getPositionMode() {
@@ -429,9 +445,9 @@ class BinanceTrade {
       throw new Error(`Cantidad (${finalQty}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
     }
 
-    // Formatear precios con la cantidad exacta de decimales permitidos por Binance
-    const formattedStop = Number(signal.stop).toFixed(filters.priceDecimals);
-    const formattedTP   = Number(signal.takeProfit).toFixed(filters.priceDecimals);
+    // Formatear precios con la cantidad exacta de decimales y múltiplo exacto de tickSize
+    const formattedStop = this.formatPrice(signal.stop, filters.tickSize, filters.priceDecimals);
+    const formattedTP   = this.formatPrice(signal.takeProfit, filters.tickSize, filters.priceDecimals);
 
     // 2. Comprobar modo de posición (Hedge o One-Way)
     const isDual = (await this.getPositionMode()) === 'HEDGE';
@@ -458,33 +474,39 @@ class BinanceTrade {
       throw new Error(`Binance no confirmó la orden de entrada: ${JSON.stringify(entryOrder)}`);
     }
 
+    // Pequeña pausa para asegurar que el motor de Binance asentó la posición
+    await new Promise(r => setTimeout(r, 300));
+
     let slOrderId  = null;
     let tpOrderId  = null;
     let slErrorMsg = null;
     let tpErrorMsg = null;
 
     // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
-    // Usa /fapi/v1/order estándar → va por WebSocket API → sin CORS, sin proxy
-    // stopPrice = precio de activación; closePosition = cierra toda la posición
-    const slParams = {
-      symbol:        cleanSym,
-      side:          closeSide,
-      type:          'STOP_MARKET',
-      stopPrice:     formattedStop,
-      closePosition: 'true',
-      workingType:   'MARK_PRICE',
-      timeInForce:   'GTE_GTC'
-    };
-    if (isDual) slParams.positionSide = positionSide;
-
+    // Intento 1: STOP_MARKET con reduceOnly y cantidad (permite coexistir con TP)
     try {
+      const slParams = {
+        symbol:      cleanSym,
+        side:        closeSide,
+        type:        'STOP_MARKET',
+        stopPrice:   formattedStop,
+        quantity:    finalQty,
+        workingType: 'MARK_PRICE'
+      };
+      if (isDual) {
+        slParams.positionSide = positionSide;
+      } else {
+        slParams.reduceOnly = 'true';
+      }
+
       const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
       slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
-      console.log('[Trade] ✅ SL colocado:', slOrderId);
+      console.log('[Trade] ✅ SL colocado (reduceOnly):', slOrderId);
     } catch (slErr) {
-      // Fallback: sin timeInForce (algunos testnet no lo requieren)
+      console.warn('[Trade] SL reduceOnly:', slErr.message, 'probando con closePosition...');
+      // Fallback: STOP_MARKET con closePosition: 'true' (sin quantity ni reduceOnly)
       try {
-        const slParams2 = {
+        const slParamsFallback = {
           symbol:        cleanSym,
           side:          closeSide,
           type:          'STOP_MARKET',
@@ -492,10 +514,11 @@ class BinanceTrade {
           closePosition: 'true',
           workingType:   'MARK_PRICE'
         };
-        if (isDual) slParams2.positionSide = positionSide;
-        const slOrder2 = await this.request('POST', '/fapi/v1/order', slParams2);
+        if (isDual) slParamsFallback.positionSide = positionSide;
+
+        const slOrder2 = await this.request('POST', '/fapi/v1/order', slParamsFallback);
         slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
-        console.log('[Trade] ✅ SL colocado (fallback):', slOrderId);
+        console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
       } catch (e2) {
         slErrorMsg = e2.message;
         console.error('[Trade SL Error]', e2.message);
@@ -503,37 +526,46 @@ class BinanceTrade {
     }
 
     // ─── 6. Take Profit ───────────────────────────────────────────────────────
-    // Igual que SL: /fapi/v1/order estándar → WebSocket → sin CORS
-    const tpParams = {
-      symbol:        cleanSym,
-      side:          closeSide,
-      type:          'TAKE_PROFIT_MARKET',
-      stopPrice:     formattedTP,
-      closePosition: 'true',
-      workingType:   'MARK_PRICE',
-      timeInForce:   'GTE_GTC'
-    };
-    if (isDual) tpParams.positionSide = positionSide;
-
+    // Intento 1: TAKE_PROFIT_MARKET con reduceOnly y cantidad
     try {
+      const tpParams = {
+        symbol:      cleanSym,
+        side:        closeSide,
+        type:        'TAKE_PROFIT_MARKET',
+        stopPrice:   formattedTP,
+        quantity:    finalQty,
+        workingType: 'MARK_PRICE'
+      };
+      if (isDual) {
+        tpParams.positionSide = positionSide;
+      } else {
+        tpParams.reduceOnly = 'true';
+      }
+
       const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
       tpOrderId = tpOrder.orderId || tpOrder.clientOrderId || 'TP_OK';
-      console.log('[Trade] ✅ TP colocado:', tpOrderId);
+      console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
     } catch (tpErr) {
-      // Fallback: sin timeInForce
+      console.warn('[Trade] TP MARKET falló:', tpErr.message, 'probando LIMIT reduceOnly...');
+      // Fallback infalible: Orden LIMIT con reduceOnly (garantizada en cualquier exchange)
       try {
-        const tpParams2 = {
-          symbol:        cleanSym,
-          side:          closeSide,
-          type:          'TAKE_PROFIT_MARKET',
-          stopPrice:     formattedTP,
-          closePosition: 'true',
-          workingType:   'MARK_PRICE'
+        const tpParamsFallback = {
+          symbol:      cleanSym,
+          side:        closeSide,
+          type:        'LIMIT',
+          price:       formattedTP,
+          quantity:    finalQty,
+          timeInForce: 'GTC'
         };
-        if (isDual) tpParams2.positionSide = positionSide;
-        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpParams2);
+        if (isDual) {
+          tpParamsFallback.positionSide = positionSide;
+        } else {
+          tpParamsFallback.reduceOnly = 'true';
+        }
+
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpParamsFallback);
         tpOrderId = tpOrder2.orderId || tpOrder2.clientOrderId || 'TP_OK';
-        console.log('[Trade] ✅ TP colocado (fallback):', tpOrderId);
+        console.log('[Trade] ✅ TP colocado (LIMIT reduceOnly):', tpOrderId);
       } catch (e2) {
         tpErrorMsg = e2.message;
         console.error('[Trade TP Error]', e2.message);
