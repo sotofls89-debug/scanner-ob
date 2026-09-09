@@ -1,4 +1,4 @@
-﻿{
+{
   "version": 2,
   "rewrites": [
     {
@@ -28,7 +28,7 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "*"
+          "value": "X-MBX-APIKEY, Content-Type, Authorization, *"
         }
       ]
     }

@@ -244,7 +244,34 @@ class BinanceTrade {
       }
     } catch (_) {}
 
-    // Intento 3: Directo a Binance (GET sin problemas de CORS, POST puede fallar)
+    // Intento 3: Vercel proxy (funciona desde móvil y PC, sin CORS)
+    // El usuario configura la URL en ⚙️ → campo "Vercel Proxy"
+    const vercelBase = typeof localStorage !== 'undefined' && localStorage.getItem('vercel_proxy_url');
+    if (vercelBase) {
+      try {
+        const vercelUrl = `${vercelBase}${proxyPrefix}${path}?${fullPayload}`;
+        console.log('[Trade] 🔄 Intentando Vercel proxy:', vercelUrl.split('?')[0]);
+        const res  = await fetch(vercelUrl, {
+          method,
+          headers: { 'X-MBX-APIKEY': apiKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+        });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data && data.code && data.code !== 200 && data.msg) {
+            throw new Error(`Binance (${data.code}): ${data.msg}`);
+          }
+          console.log('[Trade] ✅ Vercel proxy OK');
+          return data;
+        }
+      } catch (vercelErr) {
+        if (vercelErr.message.startsWith('Binance')) throw vercelErr;
+        console.warn('[Trade] ⚠️ Vercel proxy falló:', vercelErr.message);
+      }
+    }
+
+    // Intento 4: Directo a Binance (GET sin problemas de CORS, POST puede fallar)
     try {
       const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
       const text = await res.text();

@@ -924,6 +924,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (inputDemoSecret) inputDemoSecret.value = cfg.demoSecret || '';
       if (inputRealKey) inputRealKey.value = cfg.realKey || '';
       if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
+      const vercelInput = document.getElementById('input-vercel-url');
+      if (vercelInput) vercelInput.value = localStorage.getItem('vercel_proxy_url') || '';
       updateModeUI();
       apiModal?.classList.remove('hidden');
     });
@@ -943,6 +945,17 @@ document.addEventListener('DOMContentLoaded', () => {
         realKey: inputRealKey ? inputRealKey.value.trim() : '',
         realSecret: inputRealSecret ? inputRealSecret.value.trim() : ''
       });
+      // Guardar URL de Vercel proxy
+      const vercelInput = document.getElementById('input-vercel-url');
+      if (vercelInput) {
+        const vercelUrl = vercelInput.value.trim().replace(/\/$/, ''); // quitar trailing slash
+        if (vercelUrl) {
+          localStorage.setItem('vercel_proxy_url', vercelUrl);
+          console.log('[Config] Vercel proxy URL guardada:', vercelUrl);
+        } else {
+          localStorage.removeItem('vercel_proxy_url');
+        }
+      }
       apiModal?.classList.add('hidden');
       updateModeUI();
       showToast('🔐 Claves API de Binance guardadas con éxito', 'success');
