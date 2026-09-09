@@ -36,11 +36,11 @@
     }
   </script>
 
-  <link rel="stylesheet" href="styles.css?v=20260905-1448">
+  <link rel="stylesheet" href="styles.css?v=20260909-1700">
 </head>
-<body class="bg-bgDark text-white select-none">
+<body class="bg-bgDark text-white select-none min-h-screen flex justify-center py-4 px-3 sm:px-6">
 
-  <div class="app-container">
+  <div class="app-container w-full max-w-xl md:max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-4">
 
     <!-- BANNER DE ACTUALIZACIÓN AUTOMÁTICA (oculto por defecto) -->
     <div id="update-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-amber-500 text-black text-xs font-bold px-4 py-2.5 flex items-center justify-between shadow-lg">
@@ -343,7 +343,21 @@
             </tr>
           </thead>
           <tbody id="crypto-table-tbody">
-            <!-- Filas dinámicas -->
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">BTC</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">ETH</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">BNB</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">SOL</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">XRP</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">ADA</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">AVAX</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">LINK</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">DOGE</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">TON</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">DOT</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">LTC</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">NEAR</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">SUI</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
+            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">APT</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -674,13 +688,13 @@
 
   <!-- Scripts -->
 
-  <script src="js/binance_api.js?v=20260909-1137"></script>
-  <script src="js/trade_tracker.js?v=20260909-1137"></script>
-  <script src="js/smc_detector.js?v=20260909-1137"></script>
-  <script src="js/scanner.js?v=20260909-1137"></script>
-  <script src="js/binance_trade.js?v=20260909-1137"></script>
-  <script src="js/cloud_sync.js?v=20260909-1137"></script>
-  <script src="js/app.js?v=20260909-1137"></script>
+  <script src="js/binance_api.js?v=20260909-1700"></script>
+  <script src="js/trade_tracker.js?v=20260909-1700"></script>
+  <script src="js/smc_detector.js?v=20260909-1700"></script>
+  <script src="js/scanner.js?v=20260909-1700"></script>
+  <script src="js/binance_trade.js?v=20260909-1700"></script>
+  <script src="js/cloud_sync.js?v=20260909-1700"></script>
+  <script src="js/app.js?v=20260909-1700"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>

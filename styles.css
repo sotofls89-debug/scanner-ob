@@ -34,10 +34,11 @@ body {
 
 .app-container {
   width: 100%;
-  max-width: 580px;
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  margin: 0 auto;
 }
 
 /* Card base */

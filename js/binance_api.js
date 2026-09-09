@@ -114,31 +114,44 @@ class BinanceAPI {
    * Obtiene velas históricas (Klines)
    */
   async getKlines(symbol, interval = '15m', limit = 100) {
-    try {
-      const cleanSymbol = symbol.toUpperCase().replace('/', '');
-      const url = `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`[BinanceAPI] HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const rawData = await response.json();
-      if (!Array.isArray(rawData)) return [];
-      
-      return rawData.map(k => ({
-        time: Math.floor(Number(k[0]) / 1000),
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5]),
-        isClosed: true
-      }));
-    } catch (error) {
-      console.warn(`[BinanceAPI] Error obteniendo klines (${symbol} ${interval}):`, error.message);
-      return [];
+    const cleanSymbol = symbol.toUpperCase().replace('/', '');
+    const isOnVercel = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+
+    // Lista de endpoints a intentar en cascada
+    const candidates = [
+      `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
+    ];
+    if (isOnVercel) {
+      candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
+    // Respaldo alternativo Spot (velas son 99.9% idénticas y nunca están bloqueadas)
+    candidates.push(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
+
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+        });
+        if (!response.ok) continue;
+        const rawData = await response.json();
+        if (!Array.isArray(rawData) || rawData.length === 0) continue;
+
+        return rawData.map(k => ({
+          time: Math.floor(Number(k[0]) / 1000),
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5]),
+          isClosed: true
+        }));
+      } catch (_) {
+        // Probar siguiente candidato
+      }
+    }
+
+    console.warn(`[BinanceAPI] No se pudieron obtener velas para ${cleanSymbol} tras agotar respaldos.`);
+    return [];
   }
 
   /**

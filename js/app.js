@@ -19,11 +19,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let userCapital = parseFloat(localStorage.getItem('user_trading_capital')) || 500;
   let userRiskPct = parseFloat(localStorage.getItem('user_trading_risk_pct')) || 1.0;
 
+  // Declarar scanner tempranamente para evitar ReferenceError en callbacks asíncronos
+  let scanner = null;
+
   // Mapa de Posiciones en Tiempo Real de Binance Futuros
   let binancePositionsMap = {};
 
   async function syncBinancePositions() {
-    if (!binanceTrade || !binanceTrade.isConfigured()) return;
+    if (!binanceTrade || !binanceTrade.isConfigured() || !scanner) return;
     try {
       const positions = await binanceTrade.getOpenPositions();
       if (Array.isArray(positions)) {
@@ -36,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Auto-sincronizar posiciones existentes de Binance con el scanner
         positions.forEach(p => {
           const fmtSymbol = p.symbol.endsWith('USDT') ? `${p.symbol.replace('USDT', '')}/USDT` : p.symbol;
-          if (!scanner.hasUserOpenTrade(fmtSymbol)) {
+          if (scanner && !scanner.hasUserOpenTrade(fmtSymbol)) {
             scanner.addUserExecutedTrade({
               id: `binance_${p.symbol}`,
               symbol: fmtSymbol,
@@ -56,15 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Polling de posiciones cada 8s
-  setTimeout(syncBinancePositions, 1500);
-  setInterval(syncBinancePositions, 8000);
-
   // Inicializar TradeTracker con Callback de Eventos en Vivo
   const tradeTracker = new TradeTracker({
     onTradeEvent: (event) => {
       handleTradeLifeEvent(event);
-      if (window._cloudSync) {
+      if (window._cloudSync && scanner) {
         window._cloudSync.pushToCloud({
           trades: tradeTracker.trades,
           memory: tradeTracker.memory,
@@ -77,17 +76,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Instanciar CryptoScanner de inmediato para que esté disponible para todos los callbacks
+  scanner = new CryptoScanner(binanceAPI, smcDetector, tradeTracker, {
+    scanIntervalMs: 15000,
+    onUpdate: (results) => {
+      try { renderApp(results); } catch (e) { console.warn('[App] Error en renderApp:', e); }
+    },
+    onAlert: handleAlert
+  });
+
   // Motor de Sincronización en la Nube (PC ↔ Móvil)
   const cloudSync = new CloudSync({
     onSync: (cloudData) => {
       let changed = false;
-      if (cloudData.syncPayload && typeof scanner.mergeSyncPayload === 'function') {
+      if (cloudData.syncPayload && scanner && typeof scanner.mergeSyncPayload === 'function') {
         if (scanner.mergeSyncPayload(cloudData.syncPayload)) changed = true;
       }
       if (tradeTracker.mergeCloudData(cloudData)) changed = true;
 
-      if (changed) {
-        renderApp(scanner.getAllResults());
+      if (changed && scanner) {
+        try { renderApp(scanner.getAllResults()); } catch (_) {}
       }
     }
   });
@@ -96,22 +104,19 @@ document.addEventListener('DOMContentLoaded', () => {
   cloudSync.startAutoSync(() => ({
     trades: tradeTracker.trades,
     memory: tradeTracker.memory,
-    syncPayload: scanner.getExecutedPayload(),
+    syncPayload: scanner ? scanner.getExecutedPayload() : null,
     userCapital,
     userRiskPct,
     filterMode: smcDetector.filterMode
   }));
+
+  // Polling de posiciones cada 8s
+  setTimeout(syncBinancePositions, 1500);
+  setInterval(syncBinancePositions, 8000);
   
   let audioEnabled = true;
   let audioCtx = null;
-  
   let discordWebhookUrl = localStorage.getItem('discord_webhook_url') || '';
-
-  const scanner = new CryptoScanner(binanceAPI, smcDetector, tradeTracker, {
-    scanIntervalMs: 15000,
-    onUpdate: renderApp,
-    onAlert: handleAlert
-  });
 
   function playChime(type = 'LONG') {
     if (!audioEnabled) return;
@@ -1287,10 +1292,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  updateDiscordBadge();
-  setupEvents();
-  renderApp(scanner.getAllResults()); // Renderizado instantáneo de los 15 activos
-  scanner.start();
+  try { updateDiscordBadge(); } catch (e) { console.warn('[App] updateDiscordBadge:', e); }
+  try { setupEvents(); } catch (e) { console.warn('[App] setupEvents:', e); }
+  try { renderApp(scanner.getAllResults()); } catch (e) { console.warn('[App] initial renderApp:', e); }
+  try { scanner.start(); } catch (e) { console.warn('[App] scanner.start:', e); }
 
   // ─────────────────────────────────────────────────────────────────────
   // PAGE VISIBILITY API: Detecta cuando la app vuelve al primer plano
