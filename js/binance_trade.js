@@ -483,50 +483,52 @@ class BinanceTrade {
     let tpErrorMsg = null;
 
     // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
-    // Intento 1: STOP_MARKET con reduceOnly y cantidad (permite coexistir con TP)
+    // REGLA BINANCE: Solo puede existir UNA orden "closePosition" por posición.
+    // SL usa closePosition:true (cierra todo). TP usa reduceOnly:true + quantity (coexisten).
+    // CRÍTICO: reduceOnly y closePosition deben ser BOOLEAN true, no string 'true'
     try {
       const slParams = {
-        symbol:      cleanSym,
-        side:        closeSide,
-        type:        'STOP_MARKET',
-        stopPrice:   formattedStop,
-        quantity:    finalQty,
-        workingType: 'MARK_PRICE'
+        symbol:        cleanSym,
+        side:          closeSide,
+        type:          'STOP_MARKET',
+        stopPrice:     formattedStop,
+        closePosition: true,          // ← BOOLEAN, no string
+        workingType:   'MARK_PRICE'
       };
-      if (isDual) {
-        slParams.positionSide = positionSide;
-      } else {
-        slParams.reduceOnly = 'true';
-      }
+      if (isDual) slParams.positionSide = positionSide;
 
       const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
       slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
-      console.log('[Trade] ✅ SL colocado (reduceOnly):', slOrderId);
+      console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
     } catch (slErr) {
-      console.warn('[Trade] SL reduceOnly:', slErr.message, 'probando con closePosition...');
-      // Fallback: STOP_MARKET con closePosition: 'true' (sin quantity ni reduceOnly)
+      console.warn('[Trade] SL closePosition falló:', slErr.message, '→ probando reduceOnly...');
+      // Fallback: reduceOnly:true con cantidad (boolean correcto)
       try {
-        const slParamsFallback = {
-          symbol:        cleanSym,
-          side:          closeSide,
-          type:          'STOP_MARKET',
-          stopPrice:     formattedStop,
-          closePosition: 'true',
-          workingType:   'MARK_PRICE'
+        const slFallback = {
+          symbol:      cleanSym,
+          side:        closeSide,
+          type:        'STOP_MARKET',
+          stopPrice:   formattedStop,
+          quantity:    finalQty,
+          workingType: 'MARK_PRICE'
         };
-        if (isDual) slParamsFallback.positionSide = positionSide;
-
-        const slOrder2 = await this.request('POST', '/fapi/v1/order', slParamsFallback);
+        if (isDual) {
+          slFallback.positionSide = positionSide;
+        } else {
+          slFallback.reduceOnly = true;   // ← BOOLEAN, no string
+        }
+        const slOrder2 = await this.request('POST', '/fapi/v1/order', slFallback);
         slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
-        console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
+        console.log('[Trade] ✅ SL colocado (reduceOnly):', slOrderId);
       } catch (e2) {
-        slErrorMsg = e2.message;
-        console.error('[Trade SL Error]', e2.message);
+        slErrorMsg = `SL (${e2.message})`;
+        console.error('[Trade SL Error definitivo]', e2.message);
       }
     }
 
     // ─── 6. Take Profit ───────────────────────────────────────────────────────
-    // Intento 1: TAKE_PROFIT_MARKET con reduceOnly y cantidad
+    // TP usa reduceOnly:true + quantity → coexiste con el SL closePosition
+    // CRÍTICO: reduceOnly debe ser BOOLEAN true, no string 'true'
     try {
       const tpParams = {
         symbol:      cleanSym,
@@ -539,17 +541,17 @@ class BinanceTrade {
       if (isDual) {
         tpParams.positionSide = positionSide;
       } else {
-        tpParams.reduceOnly = 'true';
+        tpParams.reduceOnly = true;   // ← BOOLEAN, no string
       }
 
       const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
       tpOrderId = tpOrder.orderId || tpOrder.clientOrderId || 'TP_OK';
       console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
     } catch (tpErr) {
-      console.warn('[Trade] TP MARKET falló:', tpErr.message, 'probando LIMIT reduceOnly...');
-      // Fallback infalible: Orden LIMIT con reduceOnly (garantizada en cualquier exchange)
+      console.warn('[Trade] TP MARKET falló:', tpErr.message, '→ probando LIMIT GTC...');
+      // Fallback: LIMIT GTC con reduceOnly boolean
       try {
-        const tpParamsFallback = {
+        const tpFallback = {
           symbol:      cleanSym,
           side:        closeSide,
           type:        'LIMIT',
@@ -558,17 +560,16 @@ class BinanceTrade {
           timeInForce: 'GTC'
         };
         if (isDual) {
-          tpParamsFallback.positionSide = positionSide;
+          tpFallback.positionSide = positionSide;
         } else {
-          tpParamsFallback.reduceOnly = 'true';
+          tpFallback.reduceOnly = true;   // ← BOOLEAN, no string
         }
-
-        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpParamsFallback);
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpFallback);
         tpOrderId = tpOrder2.orderId || tpOrder2.clientOrderId || 'TP_OK';
-        console.log('[Trade] ✅ TP colocado (LIMIT reduceOnly):', tpOrderId);
+        console.log('[Trade] ✅ TP colocado (LIMIT GTC):', tpOrderId);
       } catch (e2) {
-        tpErrorMsg = e2.message;
-        console.error('[Trade TP Error]', e2.message);
+        tpErrorMsg = `TP (${e2.message})`;
+        console.error('[Trade TP Error definitivo]', e2.message);
       }
     }
 

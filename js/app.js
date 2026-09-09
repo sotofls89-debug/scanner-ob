@@ -1557,9 +1557,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
       document.getElementById('modal-confirm-trade')?.classList.add('hidden');
 
-      const slStatus = result.slOrderId ? `SL: $${result.stopPrice}` : (result.slErrorMsg ? `⚠️ SL: ${result.slErrorMsg}` : '⚠️ SL manual');
-      const tpStatus = result.tpOrderId ? `TP: $${result.takeProfit}` : (result.tpErrorMsg ? `⚠️ TP: ${result.tpErrorMsg}` : '⚠️ TP manual');
-      showToast(`✅ Orden ${result.symbol} ${result.type} (${result.quantity} contratos) | ${slStatus} | ${tpStatus}`, result.slOrderId ? 'success' : 'info');
+      // Toast principal: estado de la orden de entrada
+      const allOk = result.slOrderId && result.tpOrderId;
+      showToast(
+        `✅ Orden ${result.symbol} ${result.type} (${result.quantity} contratos) | ` +
+        (result.slOrderId ? `SL ✓` : `⚠️ SL FALLIDO`) + ` | ` +
+        (result.tpOrderId ? `TP ✓` : `⚠️ TP FALLIDO`),
+        allOk ? 'success' : 'info'
+      );
+
+      // Toasts separados para errores SL/TP — visibles en móvil
+      if (!result.slOrderId) {
+        const slMsg = result.slErrorMsg || 'No se pudo colocar SL (sin mensaje)';
+        setTimeout(() => showToast(`🛑 SL NO COLOCADO: ${slMsg}`, 'danger'), 1200);
+      }
+      if (!result.tpOrderId) {
+        const tpMsg = result.tpErrorMsg || 'No se pudo colocar TP (sin mensaje)';
+        setTimeout(() => showToast(`🎯 TP NO COLOCADO: ${tpMsg}`, 'danger'), 2400);
+      }
+
       playChime(targetSignal.type);
 
       // 1. Registrar trade en el tracker para seguimiento de auditoría en vivo
