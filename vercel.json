@@ -1,17 +1,16 @@
 {
-  "version": 2,
   "rewrites": [
     {
       "source": "/proxy-binance-demo/:path*",
-      "destination": "/api/proxy?isDemo=true&endpoint=/fapi/v1/:path*"
+      "destination": "/api/proxy?isDemo=true&endpoint=/:path*"
     },
     {
       "source": "/proxy-binance-real/:path*",
-      "destination": "/api/proxy?isDemo=false&endpoint=/fapi/v1/:path*"
+      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
     },
     {
       "source": "/proxy-binance/:path*",
-      "destination": "/api/proxy?isDemo=false&endpoint=/fapi/v1/:path*"
+      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
     }
   ],
   "headers": [

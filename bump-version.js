@@ -9,8 +9,12 @@
  *   3. Cualquier móvil que abra la app recibirá la actualización automáticamente
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const swPath = path.join(__dirname, 'sw.js');
 const htmlPath = path.join(__dirname, 'index.html');
