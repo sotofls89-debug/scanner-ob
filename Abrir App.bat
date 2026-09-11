@@ -22,7 +22,7 @@ if %errorlevel% == 0 (
     echo  Para cerrar el servidor, cierra esta ventana.
     echo.
     start "" "http://localhost:3000"
-    node server.js
+    node local-server.js
     goto :end
 )
 
