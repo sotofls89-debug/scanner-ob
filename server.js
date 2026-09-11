@@ -12,8 +12,8 @@ import url, { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
-const ROOT = __dirname;
+const PORT = process.env.PORT || 3000;
+const ROOT = path.resolve(__dirname);
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -27,14 +27,14 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
-const server = http.createServer((req, res) => {
+export default async function handler(req, res) {
   // CORS Headers para todas las peticiones
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-MBX-APIKEY, X-Target-Host');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-MBX-APIKEY, Authorization, *');
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204);
+    res.writeHead(200);
     res.end();
     return;
   }
@@ -91,10 +91,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ─── 2. SERVIDOR DE ARCHIVOS ESTÁTICOS ───
+  // ─── 2. SERVIDOR DE ARCHIVOS ESTÁTICOS (Zero-404 con fallback a index.html) ───
   let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-  if (safePath === '/' || safePath === '\\') {
-    safePath = '/index.html';
+  if (safePath === '/' || safePath === '\\' || safePath === '') {
+    safePath = 'index.html';
+  }
+  if (safePath.startsWith('/') || safePath.startsWith('\\')) {
+    safePath = safePath.slice(1);
   }
 
   const filePath = path.join(ROOT, safePath);
@@ -103,45 +106,62 @@ const server = http.createServer((req, res) => {
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      if (err.code === 'ENOENT') {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('404 Not Found');
-      } else {
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end(`500 Internal Server Error: ${err.code}`);
-      }
+      // Fallback a index.html para soportar rutas SPA
+      const indexPath = path.join(ROOT, 'index.html');
+      fs.readFile(indexPath, (indexErr, indexContent) => {
+        if (!indexErr) {
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          });
+          res.end(indexContent);
+        } else {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('404 Not Found');
+        }
+      });
       return;
     }
 
+    const isCacheable = ext === '.png' || ext === '.jpg' || ext === '.svg' || ext === '.ico';
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': 'no-cache'
+      'Cache-Control': isCacheable ? 'public, max-age=86400' : 'no-cache'
     });
     res.end(content);
   });
-});
+}
 
+// ─── 3. MODO SERVIDOR LOCAL (Desktop PC) ───
 import os from 'os';
 
 function getLocalIp() {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
       }
     }
-  }
-  return '192.168.100.3';
+  } catch (_) {}
+  return 'localhost';
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-  const localIp = getLocalIp();
-  console.log('============================================================');
-  console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo`);
-  console.log(`💻 En tu PC:     http://localhost:${PORT}`);
-  console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
-  console.log('============================================================');
-  console.log(`(Asegúrate de que tu Móvil esté conectado al mismo Wi-Fi)`);
+const server = http.createServer((req, res) => {
+  handler(req, res);
 });
+
+// En Vercel Serverless Function no se ejecuta server.listen (Vercel usa export default handler)
+if (!process.env.VERCEL) {
+  server.listen(PORT, '0.0.0.0', () => {
+    const localIp = getLocalIp();
+    console.log('============================================================');
+    console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo en puerto ${PORT}`);
+    console.log(`💻 En tu PC:     http://localhost:${PORT}`);
+    console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
+    console.log('============================================================');
+  });
+}
 
