@@ -114,11 +114,17 @@ class BinanceAPI {
    * Obtiene velas históricas (Klines)
    */
   async getKlines(symbol, interval = '15m', limit = 100) {
-    // Lista de endpoints a intentar en cascada (Futuros directo -> Spot oficial)
+    const cleanSymbol = symbol.toUpperCase().replace('/', '');
+    const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
+
+    // Lista de endpoints a intentar en cascada
     const candidates = [
-      `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
-      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
+      `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
+    if (isOnVercel) {
+      candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
+    }
+    candidates.push(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
 
     for (const url of candidates) {
       try {
@@ -296,4 +302,6 @@ class BinanceAPI {
   }
 }
 
-window.BinanceAPI = BinanceAPI;
+if (typeof window !== 'undefined') {
+  window.BinanceAPI = BinanceAPI;
+}

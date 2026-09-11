@@ -209,11 +209,34 @@ class BinanceTrade {
     const proxyPrefix  = this.isDemo() ? '/proxy-binance-demo' : '/proxy-binance-real';
     const corsHeaders  = { 'X-MBX-APIKEY': apiKey, 'Content-Type': 'application/x-www-form-urlencoded' };
 
-    // ── Intento 1: localhost:3000 (desarrollo en PC con server.js) ───────────
-    const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+    // ── Contexto ─────────────────────────────────────────────────────────────
+    const hostname = typeof window !== 'undefined' ? (window.location?.hostname || '') : '';
+    const isOnVercel = hostname.endsWith('vercel.app');
     const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1' ||
                      hostname.startsWith('192.168.') || hostname.startsWith('10.');
 
+    // ── Intento 1: Vercel Proxy (mismo origen — funciona en PC y móvil sin CORS) ──
+    if (isOnVercel) {
+      try {
+        const res = await fetch(`${proxyPrefix}${path}?${fullPayload}`, {
+          method,
+          headers: corsHeaders,
+          signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+        });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
+          console.log('[Trade] ✅ Vercel proxy OK');
+          return data;
+        }
+      } catch (ve) {
+        if (ve.message.startsWith('Binance')) throw ve;
+        console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
+      }
+    }
+
+    // ── Intento 2: localhost:3000 (desarrollo en PC con server.js) ───────────
     if (isLocal) {
       try {
         const origin = window.location.origin.includes(':3000')
@@ -242,7 +265,7 @@ class BinanceTrade {
       } catch (_) {}
     }
 
-    // ── Intento 4: Directo Binance (GET públicos sin CORS, POST puede fallar) ──
+    // ── Intento 3: Directo Binance (GET públicos sin CORS, POST directo) ──────
     try {
       const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
       const text = await res.text();

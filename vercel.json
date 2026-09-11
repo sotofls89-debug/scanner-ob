@@ -1,0 +1,45 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/proxy-binance-demo/:path*",
+      "destination": "/api/proxy?isDemo=true&endpoint=/fapi/v1/:path*"
+    },
+    {
+      "source": "/proxy-binance-real/:path*",
+      "destination": "/api/proxy?isDemo=false&endpoint=/fapi/v1/:path*"
+    },
+    {
+      "source": "/proxy-binance/:path*",
+      "destination": "/api/proxy?isDemo=false&endpoint=/fapi/v1/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-MBX-APIKEY, Content-Type, Authorization, *"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
+}
