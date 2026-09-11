@@ -24,20 +24,40 @@ const now = new Date();
 const pad = n => String(n).padStart(2, '0');
 const version = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 
-// 1. Actualiza sw.js
+// 1. Reconstruir bundle.js unificado
+const jsFiles = [
+  'js/binance_api.js',
+  'js/trade_tracker.js',
+  'js/smc_detector.js',
+  'js/scanner.js',
+  'js/binance_trade.js',
+  'js/cloud_sync.js',
+  'js/app.js'
+];
+let bundleContent = '/* SMC BOT UNIFIED BUNDLE */\n';
+for (const f of jsFiles) {
+  const fp = path.join(__dirname, f);
+  if (fs.existsSync(fp)) {
+    bundleContent += `\n/* --- ${f} --- */\n` + fs.readFileSync(fp, 'utf8') + '\n';
+  }
+}
+fs.writeFileSync(path.join(__dirname, 'bundle.js'), bundleContent, 'utf8');
+
+// 2. Actualiza sw.js
 if (fs.existsSync(swPath)) {
   let swContent = fs.readFileSync(swPath, 'utf8');
   swContent = swContent.replace(/v__BUILD__|v\d{8}-\d{4}/g, `v${version}`);
   fs.writeFileSync(swPath, swContent, 'utf8');
 }
 
-// 2. Invalida la caché de scripts y css en index.html
+// 3. Invalida la caché de scripts y css en index.html
 if (fs.existsSync(htmlPath)) {
   let htmlContent = fs.readFileSync(htmlPath, 'utf8');
+  htmlContent = htmlContent.replace(/src="bundle\.js(?:\?v=[^"]*)?"/g, `src="bundle.js?v=${version}"`);
   htmlContent = htmlContent.replace(/src="js\/([^"]+?)(?:\?v=[^"]*)?"/g, `src="js/$1?v=${version}"`);
   htmlContent = htmlContent.replace(/href="styles\.css(?:\?v=[^"]*)?"/g, `href="styles.css?v=${version}"`);
   fs.writeFileSync(htmlPath, htmlContent, 'utf8');
 }
 
-console.log(`✅ Versión actualizada: v${version}`);
+console.log(`✅ Bundle y versión actualizados: v${version}`);
 console.log(`   Caché de scripts en index.html y sw.js sincronizada.`);

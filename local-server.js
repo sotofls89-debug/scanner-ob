@@ -121,7 +121,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const os = require('os');
+import os from 'os';
 
 function getLocalIp() {
   const interfaces = os.networkInterfaces();

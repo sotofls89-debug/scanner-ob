@@ -4,13 +4,14 @@
  */
 
 // ⚙️ Versión del caché — se actualiza automáticamente con el script bump-version.js
-const CACHE_VERSION = 'v20260911-1732';
+const CACHE_VERSION = 'v20260911-1753';
 const CACHE_NAME = `smc-scanner-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './bundle.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
