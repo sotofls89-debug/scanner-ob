@@ -215,25 +215,26 @@ class BinanceTrade {
     const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1' ||
                      hostname.startsWith('192.168.') || hostname.startsWith('10.');
 
-    // ── Intento 1: Vercel Proxy (mismo origen — funciona en PC y móvil sin CORS) ──
-    if (isOnVercel) {
-      try {
-        const res = await fetch(`${proxyPrefix}${path}?${fullPayload}`, {
-          method,
-          headers: corsHeaders,
-          signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
-        });
-        const text = await res.text();
-        if (text && !text.trim().startsWith('<')) {
-          const data = JSON.parse(text);
-          if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
-          console.log('[Trade] ✅ Vercel proxy OK');
-          return data;
-        }
-      } catch (ve) {
-        if (ve.message.startsWith('Binance')) throw ve;
-        console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
+    // Base del proxy Vercel: relativa si estamos en vercel.app, absoluta si estamos en GitHub Pages o PWA
+    const vercelProxyBase = isOnVercel ? '' : 'https://scanner-ob.vercel.app';
+
+    // ── Intento 1: Vercel Proxy (Zero-CORS en PC, móvil, GitHub Pages y PWA) ──
+    try {
+      const res = await fetch(`${vercelProxyBase}${proxyPrefix}${path}?${fullPayload}`, {
+        method,
+        headers: corsHeaders,
+        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+      });
+      const text = await res.text();
+      if (text && !text.trim().startsWith('<')) {
+        const data = JSON.parse(text);
+        if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
+        console.log('[Trade] ✅ Vercel proxy OK');
+        return data;
       }
+    } catch (ve) {
+      if (ve.message.startsWith('Binance')) throw ve;
+      console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
     }
 
     // ── Intento 2: localhost:3000 (desarrollo en PC con server.js) ───────────
@@ -250,22 +251,12 @@ class BinanceTrade {
           console.log('[Trade] ✅ localhost proxy OK');
           return JSON.parse(text);
         }
-      } catch (_) {}
-
-      try {
-        const res  = await fetch(`http://localhost:3000${proxyPrefix}${path}?${fullPayload}`, {
-          method, headers: { 'X-MBX-APIKEY': apiKey, 'X-Target-Host': targetHost },
-          signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined
-        });
-        const text = await res.text();
-        if (res.ok && text && !text.trim().startsWith('<')) {
-          console.log('[Trade] ✅ localhost:3000 OK');
-          return JSON.parse(text);
-        }
-      } catch (_) {}
+      } catch (le) {
+        console.warn('[Trade] ⚠️ localhost proxy falló:', le.message);
+      }
     }
 
-    // ── Intento 3: Directo Binance (GET públicos sin CORS, POST directo) ──────
+    // ── Intento 3: Directo a Binance (fallback) ──────────────────────────────
     try {
       const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
       const text = await res.text();
@@ -281,12 +272,19 @@ class BinanceTrade {
     }
   }
 
-  // ─── Router principal: WS para órdenes autenticadas, HTTP para consultas ─────
+  // ─── Router principal: WS para órdenes normales, HTTP para condicionales ─────
 
   async request(method, path, params = {}) {
     if (!this.isConfigured()) {
       throw new Error('API Keys no configuradas. Ve a ⚙️ Configurar API.');
     }
+
+    // Órdenes condicionales (STOP_MARKET, TAKE_PROFIT_MARKET) NO son soportadas por WebSocket de Binance (error -4120).
+    // Deben enviarse obligatoriamente por HTTP (Vercel Proxy / Algo Order).
+    const isConditional = params.type === 'STOP_MARKET' ||
+                          params.type === 'TAKE_PROFIT_MARKET' ||
+                          params.type === 'STOP' ||
+                          params.type === 'TAKE_PROFIT';
 
     // Endpoints que requieren POST/DELETE autenticado → usar WebSocket API (sin CORS)
     const WS_ENDPOINTS = {
@@ -297,7 +295,7 @@ class BinanceTrade {
       'GET /fapi/v1/positionSide/dual':   'account.getPositionSideDual',
     };
 
-    const wsMethod = WS_ENDPOINTS[`${method} ${path}`];
+    const wsMethod = (!isConditional) ? WS_ENDPOINTS[`${method} ${path}`] : null;
 
     if (wsMethod) {
       try {
@@ -306,13 +304,14 @@ class BinanceTrade {
         return result;
       } catch (wsErr) {
         console.warn(`[Trade] ⚠️ WS ${wsMethod} falló (${wsErr.message}), intentando HTTP...`);
-        // Si el error es de Binance (no de conexión), lanzarlo directamente
-        if (wsErr.message.startsWith('Binance')) throw wsErr;
-        // Si es error de conexión WS, caer al HTTP como respaldo
+        // Si el error es -4120 de Binance, continuar al fallback HTTP
+        if (wsErr.message.startsWith('Binance') && !wsErr.message.includes('-4120')) {
+          throw wsErr;
+        }
       }
     }
 
-    // Para todo lo demás (GET públicos, algoOrders, etc.): usar HTTP directo
+    // Para órdenes condicionales, algoOrders y fallbacks: usar HTTP Proxy
     return this.httpRequest(method, path, params);
   }
 
@@ -540,8 +539,25 @@ class BinanceTrade {
         slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
         console.log('[Trade] ✅ SL colocado (reduceOnly):', slOrderId);
       } catch (e2) {
-        slErrorMsg = `SL (${e2.message})`;
-        console.error('[Trade SL Error definitivo]', e2.message);
+        console.warn('[Trade] SL reduceOnly falló:', e2.message, '→ probando /fapi/v1/algoOrder...');
+        try {
+          const algoParams = {
+            algoType:     'CONDITIONAL',
+            symbol:       cleanSym,
+            side:         closeSide,
+            type:         'STOP_MARKET',
+            triggerPrice: formattedStop,
+            closePosition: 'true',
+            workingType:  'MARK_PRICE'
+          };
+          if (isDual) algoParams.positionSide = positionSide;
+          const slOrder3 = await this.httpRequest('POST', '/fapi/v1/algoOrder', algoParams);
+          slOrderId = slOrder3.algoId || slOrder3.orderId || 'ALGO_SL_OK';
+          console.log('[Trade] ✅ SL colocado (algoOrder):', slOrderId);
+        } catch (e3) {
+          slErrorMsg = `SL (${e3.message})`;
+          console.error('[Trade SL Error definitivo]', e3.message);
+        }
       }
     }
 
