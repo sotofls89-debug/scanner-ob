@@ -7,15 +7,19 @@
   "rewrites": [
     {
       "source": "/proxy-binance-demo/:path*",
-      "destination": "/api/proxy?isDemo=true&endpoint=/:path*"
+      "destination": "/server.js"
     },
     {
       "source": "/proxy-binance-real/:path*",
-      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
+      "destination": "/server.js"
     },
     {
       "source": "/proxy-binance/:path*",
-      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
+      "destination": "/server.js"
+    },
+    {
+      "source": "/api/proxy",
+      "destination": "/server.js"
     }
   ],
   "headers": [

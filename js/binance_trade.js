@@ -232,6 +232,9 @@ class BinanceTrade {
         console.log('[Trade] ✅ Vercel proxy OK');
         return data;
       }
+      if (text && text.trim().startsWith('<')) {
+        console.warn('[Trade] ⚠️ Vercel proxy devolvió HTML (fallback SPA o ruta no encontrada)');
+      }
     } catch (ve) {
       if (ve.message.startsWith('Binance')) throw ve;
       console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
@@ -256,20 +259,24 @@ class BinanceTrade {
       }
     }
 
-    // ── Intento 3: Directo a Binance (fallback) ──────────────────────────────
-    try {
-      const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
-      const text = await res.text();
-      if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-        const data = JSON.parse(text);
-        if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
-        console.log('[Trade] ✅ Directo Binance OK');
-        return data;
+    // ── Intento 3: Directo a Binance (solo si estamos en entorno compatible) ──
+    if (isLocal || typeof window === 'undefined') {
+      try {
+        const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          const data = JSON.parse(text);
+          if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
+          console.log('[Trade] ✅ Directo Binance OK');
+          return data;
+        }
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      } catch (err) {
+        throw new Error(`Error de conexión con Binance (${err.message})`);
       }
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-    } catch (err) {
-      throw new Error(`Error de conexión con Binance (${err.message})`);
     }
+
+    throw new Error(`Error de comunicación con proxy Vercel (${path}). Verifique conexión de red.`);
   }
 
   // ─── Router principal: WS para órdenes normales, HTTP para condicionales ─────
@@ -463,8 +470,36 @@ class BinanceTrade {
       throw new Error(`Cantidad (${finalQty}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
     }
 
+    // 1b. Obtener precio actual de mercado para validar que el Stop Loss no caiga en zona inmediata (-2021)
+    let currentMarkPrice = null;
+    try {
+      const tickerData = await this.request('GET', '/fapi/v1/ticker/price', { symbol: cleanSym });
+      if (tickerData && tickerData.price) {
+        currentMarkPrice = parseFloat(tickerData.price);
+      }
+    } catch (_) {
+      currentMarkPrice = parseFloat(signal.entry);
+    }
+
+    let finalStopPrice = parseFloat(signal.stop);
+    if (currentMarkPrice && !isNaN(currentMarkPrice) && currentMarkPrice > 0) {
+      if (isLong) {
+        // En LONG (cierre SELL STOP), el stopPrice DEBE ser estrictamente menor que el precio de mercado
+        if (finalStopPrice >= currentMarkPrice) {
+          console.warn(`[Trade] ⚠️ Stop Loss (${finalStopPrice}) >= Precio mercado (${currentMarkPrice}). Ajustando por debajo para evitar error -2021.`);
+          finalStopPrice = currentMarkPrice * 0.998;
+        }
+      } else {
+        // En SHORT (cierre BUY STOP), el stopPrice DEBE ser estrictamente mayor que el precio de mercado
+        if (finalStopPrice <= currentMarkPrice) {
+          console.warn(`[Trade] ⚠️ Stop Loss (${finalStopPrice}) <= Precio mercado (${currentMarkPrice}). Ajustando por encima para evitar error -2021.`);
+          finalStopPrice = currentMarkPrice * 1.002;
+        }
+      }
+    }
+
     // Formatear precios con la cantidad exacta de decimales y múltiplo exacto de tickSize
-    const formattedStop = this.formatPrice(signal.stop, filters.tickSize, filters.priceDecimals);
+    const formattedStop = this.formatPrice(finalStopPrice, filters.tickSize, filters.priceDecimals);
     const formattedTP   = this.formatPrice(signal.takeProfit, filters.tickSize, filters.priceDecimals);
 
     // 2. Comprobar modo de posición (Hedge o One-Way)
@@ -501,62 +536,76 @@ class BinanceTrade {
     let tpErrorMsg = null;
 
     // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
-    // REGLA BINANCE: Solo puede existir UNA orden "closePosition" por posición.
-    // SL usa closePosition:true (cierra todo). TP usa reduceOnly:true + quantity (coexisten).
-    // CRÍTICO: reduceOnly y closePosition deben ser BOOLEAN true, no string 'true'
+    // Intento 1: STOP_MARKET con reduceOnly (One-Way) o positionSide (Hedge) + cantidad
+    // Este formato es idéntico al TP (que funciona 100%) y es compatible con todos los modos
     try {
       const slParams = {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
         stopPrice:     formattedStop,
-        closePosition: true,          // ← BOOLEAN, no string
+        quantity:      finalQty,
         workingType:   'MARK_PRICE'
       };
-      if (isDual) slParams.positionSide = positionSide;
+      if (isDual) {
+        slParams.positionSide = positionSide;
+      } else {
+        slParams.reduceOnly = true;
+      }
 
       const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
       slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
-      console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
+      console.log('[Trade] ✅ SL colocado (STOP_MARKET reduceOnly):', slOrderId);
     } catch (slErr) {
-      console.warn('[Trade] SL closePosition falló:', slErr.message, '→ probando reduceOnly...');
-      // Fallback: reduceOnly:true con cantidad (boolean correcto)
-      try {
-        const slFallback = {
-          symbol:      cleanSym,
-          side:        closeSide,
-          type:        'STOP_MARKET',
-          stopPrice:   formattedStop,
-          quantity:    finalQty,
-          workingType: 'MARK_PRICE'
-        };
-        if (isDual) {
-          slFallback.positionSide = positionSide;
-        } else {
-          slFallback.reduceOnly = true;   // ← BOOLEAN, no string
-        }
-        const slOrder2 = await this.request('POST', '/fapi/v1/order', slFallback);
-        slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
-        console.log('[Trade] ✅ SL colocado (reduceOnly):', slOrderId);
-      } catch (e2) {
-        console.warn('[Trade] SL reduceOnly falló:', e2.message, '→ probando /fapi/v1/algoOrder...');
+      console.warn('[Trade] SL STOP_MARKET reduceOnly falló:', slErr.message, '→ probando alternativa...');
+      slErrorMsg = slErr.message;
+
+      // Intento 2 (Fallback): En One-Way probar closePosition:true (sin cantidad)
+      if (!isDual) {
         try {
-          const algoParams = {
-            algoType:     'CONDITIONAL',
-            symbol:       cleanSym,
-            side:         closeSide,
-            type:         'STOP_MARKET',
-            triggerPrice: formattedStop,
-            closePosition: 'true',
-            workingType:  'MARK_PRICE'
+          const slClosePos = {
+            symbol:        cleanSym,
+            side:          closeSide,
+            type:          'STOP_MARKET',
+            stopPrice:     formattedStop,
+            closePosition: true,
+            workingType:   'MARK_PRICE'
           };
-          if (isDual) algoParams.positionSide = positionSide;
-          const slOrder3 = await this.httpRequest('POST', '/fapi/v1/algoOrder', algoParams);
+          const slOrder2 = await this.request('POST', '/fapi/v1/order', slClosePos);
+          slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
+          console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
+          slErrorMsg = null;
+        } catch (e2) {
+          console.warn('[Trade] SL closePosition también falló:', e2.message);
+          slErrorMsg = e2.message;
+        }
+      }
+
+      // Intento 3 (Fallback final): Orden STOP (Stop Limit)
+      if (!slOrderId) {
+        try {
+          const slLimit = {
+            symbol:        cleanSym,
+            side:          closeSide,
+            type:          'STOP',
+            stopPrice:     formattedStop,
+            price:         formattedStop,
+            quantity:      finalQty,
+            timeInForce:   'GTC',
+            workingType:   'MARK_PRICE'
+          };
+          if (isDual) {
+            slLimit.positionSide = positionSide;
+          } else {
+            slLimit.reduceOnly = true;
+          }
+          const slOrder3 = await this.request('POST', '/fapi/v1/order', slLimit);
           slOrderId = slOrder3.algoId || slOrder3.orderId || 'ALGO_SL_OK';
-          console.log('[Trade] ✅ SL colocado (algoOrder):', slOrderId);
+          console.log('[Trade] ✅ SL colocado (STOP Limit):', slOrderId);
+          slErrorMsg = null;
         } catch (e3) {
-          slErrorMsg = `SL (${e3.message})`;
           console.error('[Trade SL Error definitivo]', e3.message);
+          slErrorMsg = e3.message;
         }
       }
     }

@@ -43,7 +43,7 @@ export default async function handler(req, res) {
   const pathname = parsedUrl.pathname;
 
   // ─── 1. PROXY DIRECTO PARA BINANCE (Sin restricciones CORS de navegador) ───
-  if (pathname.startsWith('/proxy-binance')) {
+  if (pathname.startsWith('/proxy-binance') || pathname.startsWith('/api/proxy')) {
     let targetHost = 'fapi.binance.com';
     let targetPath = '';
 
@@ -53,6 +53,15 @@ export default async function handler(req, res) {
     } else if (pathname.startsWith('/proxy-binance-real')) {
       targetHost = 'fapi.binance.com';
       targetPath = req.url.replace('/proxy-binance-real', '');
+    } else if (pathname.startsWith('/api/proxy')) {
+      const q = { ...parsedUrl.query };
+      const isDemo = q.isDemo === 'true' || (req.url && req.url.includes('isDemo=true'));
+      targetHost = isDemo ? 'testnet.binancefuture.com' : 'fapi.binance.com';
+      const endpoint = q.endpoint || '/fapi/v1/order';
+      delete q.isDemo;
+      delete q.endpoint;
+      const restQs = new URLSearchParams(q).toString();
+      targetPath = endpoint + (restQs ? (endpoint.includes('?') ? '&' : '?') + restQs : '');
     } else {
       targetHost = req.headers['x-target-host'] || 'fapi.binance.com';
       targetPath = req.url.replace('/proxy-binance', '');
@@ -87,7 +96,13 @@ export default async function handler(req, res) {
       res.end(JSON.stringify({ code: -1, msg: `Proxy Error: ${err.message}` }));
     });
 
-    req.pipe(proxyReq);
+    if (req.body) {
+      const bodyData = typeof req.body === 'string' ? req.body : (Buffer.isBuffer(req.body) ? req.body : JSON.stringify(req.body));
+      proxyReq.write(bodyData);
+      proxyReq.end();
+    } else {
+      req.pipe(proxyReq);
+    }
     return;
   }
 
