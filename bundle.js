@@ -1879,29 +1879,25 @@ class BinanceTrade {
     const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1' ||
                      hostname.startsWith('192.168.') || hostname.startsWith('10.');
 
-    // Base del proxy Vercel: relativa si estamos en vercel.app, absoluta si estamos en GitHub Pages o PWA
-    const vercelProxyBase = isOnVercel ? '' : 'https://scanner-ob.vercel.app';
-
-    // ── Intento 1: Vercel Proxy (Zero-CORS en PC, móvil, GitHub Pages y PWA) ──
-    try {
-      const res = await fetch(`${vercelProxyBase}${proxyPrefix}${path}?${fullPayload}`, {
-        method,
-        headers: corsHeaders,
-        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
-      });
-      const text = await res.text();
-      if (text && !text.trim().startsWith('<')) {
-        const data = JSON.parse(text);
-        if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
-        console.log('[Trade] ✅ Vercel proxy OK');
-        return data;
+    // ── Intento 1: Vercel Proxy (solo cuando se navega en un dominio de vercel.app) ──
+    if (isOnVercel) {
+      try {
+        const res = await fetch(`${proxyPrefix}${path}?${fullPayload}`, {
+          method,
+          headers: corsHeaders,
+          signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+        });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
+          console.log('[Trade] ✅ Vercel proxy OK');
+          return data;
+        }
+      } catch (ve) {
+        if (ve.message.startsWith('Binance')) throw ve;
+        console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
       }
-      if (text && text.trim().startsWith('<')) {
-        console.warn('[Trade] ⚠️ Vercel proxy devolvió HTML (fallback SPA o ruta no encontrada)');
-      }
-    } catch (ve) {
-      if (ve.message.startsWith('Binance')) throw ve;
-      console.warn('[Trade] ⚠️ Vercel proxy falló:', ve.message);
     }
 
     // ── Intento 2: localhost:3000 (desarrollo en PC con server.js) ───────────
@@ -1923,50 +1919,38 @@ class BinanceTrade {
       }
     }
 
-    // ── Intento 3: Directo a Binance (solo si estamos en entorno compatible) ──
-    if (isLocal || typeof window === 'undefined') {
-      try {
-        const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
-        const text = await res.text();
-        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
-          const data = JSON.parse(text);
-          if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
-          console.log('[Trade] ✅ Directo Binance OK');
-          return data;
-        }
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      } catch (err) {
-        throw new Error(`Error de conexión con Binance (${err.message})`);
+    // ── Intento 3: Directo a Binance (entornos sin restricción CORS) ──────────
+    try {
+      const res  = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
+      const text = await res.text();
+      if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+        const data = JSON.parse(text);
+        if (data?.code && data.code !== 200 && data.msg) throw new Error(`Binance (${data.code}): ${data.msg}`);
+        console.log('[Trade] ✅ Directo Binance OK');
+        return data;
       }
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    } catch (err) {
+      if (err.message.startsWith('Binance')) throw err;
+      throw new Error(`Error de conexión con Binance (${err.message})`);
     }
-
-    throw new Error(`Error de comunicación con proxy Vercel (${path}). Verifique conexión de red.`);
   }
 
-  // ─── Router principal: WS para órdenes normales, HTTP para condicionales ─────
+  // ─── Router principal: WS API directo (CORS-free en móvil y GitHub Pages) ────
 
   async request(method, path, params = {}) {
     if (!this.isConfigured()) {
       throw new Error('API Keys no configuradas. Ve a ⚙️ Configurar API.');
     }
 
-    // Órdenes condicionales (STOP_MARKET, TAKE_PROFIT_MARKET) NO son soportadas por WebSocket de Binance (error -4120).
-    // Deben enviarse obligatoriamente por HTTP (Vercel Proxy / Algo Order).
-    const isConditional = params.type === 'STOP_MARKET' ||
-                          params.type === 'TAKE_PROFIT_MARKET' ||
-                          params.type === 'STOP' ||
-                          params.type === 'TAKE_PROFIT';
-
-    // Endpoints que requieren POST/DELETE autenticado → usar WebSocket API (sin CORS)
+    // Endpoints que requieren autenticación → usar WebSocket API (sin CORS, funciona 100% en GitHub Pages y móvil)
     const WS_ENDPOINTS = {
-      'POST /fapi/v1/order':              'order.place',
-      'DELETE /fapi/v1/order':            'order.cancel',
-      'POST /fapi/v1/leverage':           'account.changeInitialLeverage',
-      'GET /fapi/v2/account':             'account.status',
-      'GET /fapi/v1/positionSide/dual':   'account.getPositionSideDual',
+      'POST /fapi/v1/order':    'order.place',
+      'DELETE /fapi/v1/order':  'order.cancel',
+      'GET /fapi/v2/account':   'account.status'
     };
 
-    const wsMethod = (!isConditional) ? WS_ENDPOINTS[`${method} ${path}`] : null;
+    const wsMethod = WS_ENDPOINTS[`${method} ${path}`];
 
     if (wsMethod) {
       try {
@@ -1974,15 +1958,17 @@ class BinanceTrade {
         console.log(`[Trade] ✅ WS OK: ${wsMethod}`);
         return result;
       } catch (wsErr) {
-        console.warn(`[Trade] ⚠️ WS ${wsMethod} falló (${wsErr.message}), intentando HTTP...`);
-        // Si el error es -4120 de Binance, continuar al fallback HTTP
-        if (wsErr.message.startsWith('Binance') && !wsErr.message.includes('-4120')) {
+        console.warn(`[Trade] ⚠️ WS ${wsMethod} falló (${wsErr.message})`);
+        // Si el error proviene de Binance (código de error real), lanzarlo directamente
+        // para que la lógica de fallback (ej: Stop Loss) pueda reaccionar al código exacto
+        if (wsErr.message.startsWith('Binance')) {
           throw wsErr;
         }
+        // Si fue fallo de conexión/timeout de WS, intentar HTTP como respaldo
       }
     }
 
-    // Para órdenes condicionales, algoOrders y fallbacks: usar HTTP Proxy
+    // Para consultas no soportadas por WS: usar HTTP
     return this.httpRequest(method, path, params);
   }
 
@@ -2094,19 +2080,22 @@ class BinanceTrade {
   }
 
   async getPositionMode() {
-    try {
-      const data = await this.request('GET', '/fapi/v1/positionSide/dual');
-      return data && data.dualSidePosition === true ? 'HEDGE' : 'ONE_WAY';
-    } catch (e) {
-      return 'ONE_WAY';
-    }
+    return 'ONE_WAY';
   }
 
   // ─── Ejecución de Trade Completo ────────────────────────────────────────────
 
   async setLeverage(symbol, leverage) {
     const cleanSym = symbol.replace('/', '').toUpperCase();
-    return this.request('POST', '/fapi/v1/leverage', { symbol: cleanSym, leverage });
+    const isLocal = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const isOnVercel = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+    
+    // Leverage solo se puede enviar por HTTP; si no hay servidor local ni Vercel, omitir para no demorar la orden
+    if (!isLocal && !isOnVercel) {
+      return { leverage };
+    }
+    return this.httpRequest('POST', '/fapi/v1/leverage', { symbol: cleanSym, leverage });
   }
 
   async executeTrade(signal, { leverage = 10, quantity = null } = {}) {
@@ -2134,14 +2123,16 @@ class BinanceTrade {
       throw new Error(`Cantidad (${finalQty}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
     }
 
-    // 1b. Obtener precio actual de mercado para validar que el Stop Loss no caiga en zona inmediata (-2021)
+    // 1b. Obtener precio actual de mercado directamente (GET público sin CORS) para validar SL
     let currentMarkPrice = null;
     try {
-      const tickerData = await this.request('GET', '/fapi/v1/ticker/price', { symbol: cleanSym });
-      if (tickerData && tickerData.price) {
-        currentMarkPrice = parseFloat(tickerData.price);
+      const res = await fetch(`${this.getBaseUrl()}/fapi/v1/ticker/price?symbol=${cleanSym}`);
+      if (res.ok) {
+        const tickerData = await res.json();
+        if (tickerData?.price) currentMarkPrice = parseFloat(tickerData.price);
       }
-    } catch (_) {
+    } catch (_) {}
+    if (!currentMarkPrice || isNaN(currentMarkPrice) || currentMarkPrice <= 0) {
       currentMarkPrice = parseFloat(signal.entry);
     }
 
@@ -2200,39 +2191,46 @@ class BinanceTrade {
     let tpErrorMsg = null;
 
     // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
-    // Intento 1: STOP_MARKET con reduceOnly (One-Way) o positionSide (Hedge) + cantidad
-    // Este formato es idéntico al TP (que funciona 100%) y es compatible con todos los modos
     try {
+      // Intento 1: STOP_MARKET con reduceOnly:true y cantidad (Directo por WebSocket)
       const slParams = {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
         stopPrice:     formattedStop,
         quantity:      finalQty,
+        reduceOnly:    true,
         workingType:   'MARK_PRICE'
       };
       if (isDual) {
+        delete slParams.reduceOnly;
         slParams.positionSide = positionSide;
-      } else {
-        slParams.reduceOnly = true;
       }
 
       const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
       slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
       console.log('[Trade] ✅ SL colocado (STOP_MARKET reduceOnly):', slOrderId);
     } catch (slErr) {
-      console.warn('[Trade] SL STOP_MARKET reduceOnly falló:', slErr.message, '→ probando alternativa...');
+      console.warn('[Trade] SL STOP_MARKET reduceOnly falló:', slErr.message, '→ evaluando alternativas...');
       slErrorMsg = slErr.message;
 
-      // Intento 2 (Fallback): En One-Way probar closePosition:true (sin cantidad)
+      // Si el fallo fue por trigger inmediato (-2021), recalcular con margen seguro del 0.8%
+      let safeStopPrice = formattedStop;
+      if (slErr.message.includes('-2021') || slErr.message.toLowerCase().includes('immediately')) {
+        const safeNum = isLong ? currentMarkPrice * 0.992 : currentMarkPrice * 1.008;
+        safeStopPrice = this.formatPrice(safeNum, filters.tickSize, filters.priceDecimals);
+        console.log(`[Trade] 🔄 Reintentando SL con precio de stop seguro (-2021): ${safeStopPrice}`);
+      }
+
+      // Intento 2 (Fallback): Probar closePosition: 'true' (cierre total sin quantity)
       if (!isDual) {
         try {
           const slClosePos = {
             symbol:        cleanSym,
             side:          closeSide,
             type:          'STOP_MARKET',
-            stopPrice:     formattedStop,
-            closePosition: true,
+            stopPrice:     safeStopPrice,
+            closePosition: 'true',
             workingType:   'MARK_PRICE'
           };
           const slOrder2 = await this.request('POST', '/fapi/v1/order', slClosePos);
@@ -2240,7 +2238,7 @@ class BinanceTrade {
           console.log('[Trade] ✅ SL colocado (closePosition):', slOrderId);
           slErrorMsg = null;
         } catch (e2) {
-          console.warn('[Trade] SL closePosition también falló:', e2.message);
+          console.warn('[Trade] SL closePosition falló:', e2.message);
           slErrorMsg = e2.message;
         }
       }
@@ -2252,19 +2250,19 @@ class BinanceTrade {
             symbol:        cleanSym,
             side:          closeSide,
             type:          'STOP',
-            stopPrice:     formattedStop,
-            price:         formattedStop,
+            stopPrice:     safeStopPrice,
+            price:         safeStopPrice,
             quantity:      finalQty,
+            reduceOnly:    true,
             timeInForce:   'GTC',
             workingType:   'MARK_PRICE'
           };
           if (isDual) {
+            delete slLimit.reduceOnly;
             slLimit.positionSide = positionSide;
-          } else {
-            slLimit.reduceOnly = true;
           }
           const slOrder3 = await this.request('POST', '/fapi/v1/order', slLimit);
-          slOrderId = slOrder3.algoId || slOrder3.orderId || 'ALGO_SL_OK';
+          slOrderId = slOrder3.orderId || slOrder3.clientOrderId || 'SL_OK';
           console.log('[Trade] ✅ SL colocado (STOP Limit):', slOrderId);
           slErrorMsg = null;
         } catch (e3) {
@@ -2275,46 +2273,44 @@ class BinanceTrade {
     }
 
     // ─── 6. Take Profit ───────────────────────────────────────────────────────
-    // TP usa reduceOnly:true + quantity → coexiste con el SL closePosition
-    // CRÍTICO: reduceOnly debe ser BOOLEAN true, no string 'true'
+    // TP usa LIMIT GTC con reduceOnly:true colocado en el libro de órdenes (Maker order sin costo extra)
     try {
       const tpParams = {
         symbol:      cleanSym,
         side:        closeSide,
-        type:        'TAKE_PROFIT_MARKET',
-        stopPrice:   formattedTP,
+        type:        'LIMIT',
+        price:       formattedTP,
         quantity:    finalQty,
-        workingType: 'MARK_PRICE'
+        reduceOnly:  true,
+        timeInForce: 'GTC'
       };
       if (isDual) {
+        delete tpParams.reduceOnly;
         tpParams.positionSide = positionSide;
-      } else {
-        tpParams.reduceOnly = true;   // ← BOOLEAN, no string
       }
 
       const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
       tpOrderId = tpOrder.orderId || tpOrder.clientOrderId || 'TP_OK';
-      console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
+      console.log('[Trade] ✅ TP colocado (LIMIT GTC):', tpOrderId);
     } catch (tpErr) {
-      console.warn('[Trade] TP MARKET falló:', tpErr.message, '→ probando LIMIT GTC...');
-      // Fallback: LIMIT GTC con reduceOnly boolean
+      console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET...');
       try {
-        const tpFallback = {
+        const tpMkt = {
           symbol:      cleanSym,
           side:        closeSide,
-          type:        'LIMIT',
-          price:       formattedTP,
+          type:        'TAKE_PROFIT_MARKET',
+          stopPrice:   formattedTP,
           quantity:    finalQty,
-          timeInForce: 'GTC'
+          reduceOnly:  true,
+          workingType: 'MARK_PRICE'
         };
         if (isDual) {
-          tpFallback.positionSide = positionSide;
-        } else {
-          tpFallback.reduceOnly = true;   // ← BOOLEAN, no string
+          delete tpMkt.reduceOnly;
+          tpMkt.positionSide = positionSide;
         }
-        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpFallback);
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpMkt);
         tpOrderId = tpOrder2.orderId || tpOrder2.clientOrderId || 'TP_OK';
-        console.log('[Trade] ✅ TP colocado (LIMIT GTC):', tpOrderId);
+        console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
       } catch (e2) {
         tpErrorMsg = `TP (${e2.message})`;
         console.error('[Trade TP Error definitivo]', e2.message);
