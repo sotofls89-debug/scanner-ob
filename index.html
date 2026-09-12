@@ -204,7 +204,7 @@ body {
 
 
 </style>
-  <link rel="stylesheet" href="styles.css?v=20260912-0927">
+  <link rel="stylesheet" href="styles.css?v=20260912-1152">
 </head>
 <body class="bg-bgDark text-white select-none min-h-screen flex justify-center py-4 px-3 sm:px-6">
 
@@ -231,8 +231,16 @@ body {
     <!-- HEADER -->
     <header class="flex items-center justify-between pt-2">
       <div>
-        <h1 class="text-xl font-extrabold text-white tracking-tight">Order Block Signals</h1>
-        <p class="text-xs text-gray-400 mt-0.5">Velas de 15m · RR 1:3 · datos en vivo de Binance</p>
+        <div class="flex items-center gap-2">
+          <h1 class="text-xl font-extrabold text-white tracking-tight">Order Block Signals</h1>
+          <span class="build-version-tag text-[10px] bg-gray-800 text-amber-400 font-mono px-1.5 py-0.5 rounded border border-gray-700">v20260912-1152</span>
+        </div>
+        <div class="flex items-center gap-2 mt-0.5">
+          <p class="text-xs text-gray-400">Velas de 15m · RR 1:3 · datos en vivo</p>
+          <button id="btn-force-reload" onclick="forceCacheCleanAndReload()" class="text-[11px] text-amber-400 hover:text-amber-300 underline font-bold flex items-center gap-1 active:scale-95 cursor-pointer">
+            <span>🔄</span> Limpiar Caché
+          </button>
+        </div>
       </div>
 
       <div class="flex items-center gap-2">
@@ -654,6 +662,12 @@ body {
         </button>
       </div>
 
+      <div class="pt-1">
+        <button type="button" id="btn-force-update-modal" onclick="forceCacheCleanAndReload()" class="w-full py-2 px-3 bg-gray-800/90 hover:bg-gray-700 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95">
+          <span>🔄</span> Limpiar Caché y Forzar Actualización (<span class="build-version-tag">v20260912-1152</span>)
+        </button>
+      </div>
+
       <div class="flex justify-end pt-1">
         <button id="btn-save-api" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/30 active:scale-95 w-full">
           🔐 Guardar Claves
@@ -854,8 +868,35 @@ body {
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
+  <!-- Script de recarga forzada y limpieza profunda de Service Worker / Caché -->
+  <script>
+    async function forceCacheCleanAndReload() {
+      const btns = [document.getElementById('btn-force-reload'), document.getElementById('btn-force-update-modal')];
+      btns.forEach(b => { if (b) b.innerHTML = '<span>⏳</span> Limpiando...'; });
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const reg of regs) {
+            await reg.unregister();
+          }
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          for (const key of keys) {
+            await caches.delete(key);
+          }
+        }
+      } catch (e) {
+        console.warn('[Cache] Error limpiando caché:', e);
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set('t', Date.now().toString());
+      window.location.replace(url.toString());
+    }
+  </script>
+
   <!-- Script principal: Bundle unificado (Zero-404, root-level) -->
-  <script src="bundle.js?v=20260912-0927"></script>
+  <script src="bundle.js?v=20260912-1152"></script>
 
   <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
   <script>

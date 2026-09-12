@@ -50,12 +50,13 @@ if (fs.existsSync(swPath)) {
   fs.writeFileSync(swPath, swContent, 'utf8');
 }
 
-// 3. Invalida la caché de scripts y css en index.html
+// 3. Invalida la caché de scripts y css en index.html y actualiza etiquetas de versión
 if (fs.existsSync(htmlPath)) {
   let htmlContent = fs.readFileSync(htmlPath, 'utf8');
   htmlContent = htmlContent.replace(/src="bundle\.js(?:\?v=[^"]*)?"/g, `src="bundle.js?v=${version}"`);
   htmlContent = htmlContent.replace(/src="js\/([^"]+?)(?:\?v=[^"]*)?"/g, `src="js/$1?v=${version}"`);
   htmlContent = htmlContent.replace(/href="styles\.css(?:\?v=[^"]*)?"/g, `href="styles.css?v=${version}"`);
+  htmlContent = htmlContent.replace(/(<span[^>]*class="[^"]*build-version-tag[^"]*"[^>]*>)[^<]*(<\/span>)/g, `$1v${version}$2`);
   fs.writeFileSync(htmlPath, htmlContent, 'utf8');
 }
 
