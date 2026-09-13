@@ -124,6 +124,7 @@ class BinanceAPI {
    * Obtiene velas históricas (Klines)
    */
   async getKlines(symbol, interval = '15m', limit = 100) {
+    const cleanSymbol = symbol.toUpperCase().replace('/', '');
     const isHosted = typeof window !== 'undefined' && 
       (window.location?.hostname?.endsWith('netlify.app') || window.location?.hostname?.endsWith('vercel.app'));
 
