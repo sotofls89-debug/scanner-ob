@@ -127,15 +127,15 @@ class BinanceAPI {
    * Obtiene velas históricas (Klines)
    */
   async getKlines(symbol, interval = '15m', limit = 100) {
-    const cleanSymbol = symbol.toUpperCase().replace('/', '');
-    const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
+    const isHosted = typeof window !== 'undefined' && 
+      (window.location?.hostname?.endsWith('netlify.app') || window.location?.hostname?.endsWith('vercel.app'));
 
     // Lista de endpoints a intentar en cascada (Prioridad 1: Directo a Binance con CORS '*' nativo en <300ms)
     const candidates = [
       `https://fapi.binance.com/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
       `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
-    if (isOnVercel) {
+    if (isHosted) {
       candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
     candidates.push(`https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
@@ -1885,23 +1885,26 @@ class BinanceTrade {
 
     // ── Contexto de ejecución ────────────────────────────────────────────────
     const hostname = typeof window !== 'undefined' ? (window.location?.hostname || '') : '';
-    const isOnVercel = hostname.endsWith('vercel.app');
-    const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1' ||
-                     hostname.startsWith('192.168.') || hostname.startsWith('10.');
+    const isOnNetlify = hostname.endsWith('netlify.app');
+    const isOnVercel  = hostname.endsWith('vercel.app');
+    const isHosted    = isOnNetlify || isOnVercel;
+    const isLocal     = hostname === 'localhost' || hostname === '127.0.0.1' ||
+                        hostname.startsWith('192.168.') || hostname.startsWith('10.');
 
     // ── URL de Proxy ─────────────────────────────────────────────────────────
-    // Si estamos en Vercel: usar ruta relativa '/proxy-binance-demo'
+    // Si estamos en Netlify o Vercel: usar ruta relativa '/proxy-binance-demo'
     // Si estamos en localhost: usar origin local en puerto 3000
-    // Si estamos en GitHub Pages o PWA móvil: usar https://scanner-ob.vercel.app
+    // Si estamos en GitHub Pages o PWA móvil: usar https://scanner-obb.netlify.app
     let proxyBase = '';
-    if (isOnVercel) {
+    if (isHosted) {
       proxyBase = '';
     } else if (isLocal) {
       proxyBase = window.location.origin.includes(':3000')
         ? window.location.origin
         : `${window.location.protocol}//${hostname}:3000`;
     } else {
-      proxyBase = 'https://scanner-ob.vercel.app';
+      const customProxy = typeof localStorage !== 'undefined' ? (localStorage.getItem('proxy_url') || localStorage.getItem('vercel_proxy_url')) : null;
+      proxyBase = customProxy || 'https://scanner-obb.netlify.app';
     }
 
     // ── Intento 1: Directo a Binance Futuros (Cuenta Real soporta CORS '*' nativo en <200ms) ──
@@ -1928,7 +1931,7 @@ class BinanceTrade {
       }
     }
 
-    // ── Intento 2: Proxy HTTP (Vercel Edge / Localhost) ──────────────────────
+    // ── Intento 2: Proxy HTTP (Netlify Edge / Localhost / Vercel) ─────────────
     try {
       const res = await fetch(`${proxyBase}${proxyPrefix}${path}?${fullPayload}`, {
         method,
@@ -1955,11 +1958,11 @@ class BinanceTrade {
       console.warn('[Trade] ⚠️ Proxy primario falló:', err1.message);
     }
 
-    // ── Intento 3: Fallback directo a endpoint /api/proxy de Vercel ───────────
-    if (!isOnVercel) {
+    // ── Intento 3: Fallback directo a endpoint /api/proxy de Netlify / Vercel ──
+    if (!isHosted) {
       try {
-        const vercelFallback = `https://scanner-ob.vercel.app/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
-        const res = await fetch(vercelFallback, {
+        const hostedFallback = `${proxyBase}/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
+        const res = await fetch(hostedFallback, {
           method,
           headers: corsHeaders,
           signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
@@ -1970,12 +1973,12 @@ class BinanceTrade {
           if (data?.code && data.code !== 200 && data.msg) {
             throw new Error(`Binance (${data.code}): ${data.msg}`);
           }
-          console.log('[Trade] ✅ Vercel fallback proxy OK');
+          console.log('[Trade] ✅ Hosted fallback proxy OK');
           return data;
         }
       } catch (err2) {
         if (err2.message.startsWith('Binance')) throw err2;
-        console.warn('[Trade] ⚠️ Vercel fallback proxy falló:', err2.message);
+        console.warn('[Trade] ⚠️ Hosted fallback proxy falló:', err2.message);
       }
     }
 
@@ -2157,10 +2160,11 @@ class BinanceTrade {
     const cleanSym = symbol.replace('/', '').toUpperCase();
     const isLocal = typeof window !== 'undefined' && 
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    const isOnVercel = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+    const isHosted = typeof window !== 'undefined' && 
+      (window.location.hostname.endsWith('netlify.app') || window.location.hostname.endsWith('vercel.app'));
     
-    // Leverage solo se puede enviar por HTTP; si no hay servidor local ni Vercel, omitir para no demorar la orden
-    if (!isLocal && !isOnVercel) {
+    // Leverage solo se puede enviar por HTTP; si no hay servidor local ni host con proxy, omitir para no demorar la orden
+    if (!isLocal && !isHosted) {
       return { leverage };
     }
     return this.httpRequest('POST', '/fapi/v1/leverage', { symbol: cleanSym, leverage });
@@ -3648,7 +3652,7 @@ function initApp() {
       if (inputRealKey) inputRealKey.value = cfg.realKey || '';
       if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
       const vercelInput = document.getElementById('input-vercel-url');
-      if (vercelInput) vercelInput.value = localStorage.getItem('vercel_proxy_url') || '';
+      if (vercelInput) vercelInput.value = localStorage.getItem('proxy_url') || localStorage.getItem('vercel_proxy_url') || '';
       updateModeUI();
       apiModal?.classList.remove('hidden');
     });
@@ -3668,14 +3672,16 @@ function initApp() {
         realKey: inputRealKey ? inputRealKey.value.trim() : '',
         realSecret: inputRealSecret ? inputRealSecret.value.trim() : ''
       });
-      // Guardar URL de Vercel proxy
+      // Guardar URL de Proxy (Netlify / Vercel)
       const vercelInput = document.getElementById('input-vercel-url');
       if (vercelInput) {
-        const vercelUrl = vercelInput.value.trim().replace(/\/$/, ''); // quitar trailing slash
-        if (vercelUrl) {
-          localStorage.setItem('vercel_proxy_url', vercelUrl);
-          console.log('[Config] Vercel proxy URL guardada:', vercelUrl);
+        const pUrl = vercelInput.value.trim().replace(/\/$/, ''); // quitar trailing slash
+        if (pUrl) {
+          localStorage.setItem('proxy_url', pUrl);
+          localStorage.setItem('vercel_proxy_url', pUrl);
+          console.log('[Config] Proxy URL guardada:', pUrl);
         } else {
+          localStorage.removeItem('proxy_url');
           localStorage.removeItem('vercel_proxy_url');
         }
       }

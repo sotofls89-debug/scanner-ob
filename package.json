@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node local_dev_server.js"
+    "start": "node server.js"
   },
   "private": true
 }

@@ -1,0 +1,52 @@
+﻿[build]
+  publish = "."
+  functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
+
+# 1. Edge Function para /api/proxy (baja latencia, edge global sin bloqueos regionales)
+[[edge_functions]]
+  path = "/api/proxy"
+  function = "proxy"
+
+# 2. Redirects directos de Edge CDN para Binance Futuros (CORS trasparente)
+[[redirects]]
+  from = "/proxy-binance-demo/*"
+  to = "https://testnet.binancefuture.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/proxy-binance-real/*"
+  to = "https://fapi.binance.com/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/proxy-binance/*"
+  to = "https://fapi.binance.com/:splat"
+  status = 200
+  force = true
+
+# 3. Fallback a Serverless Function tradicional si Edge Function no está activa
+[[redirects]]
+  from = "/api/proxy"
+  to = "/.netlify/functions/proxy"
+  status = 200
+
+# 4. Headers globales CORS y caché para PWA
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, X-MBX-APIKEY, x-mbx-apikey, Authorization, *"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/bundle.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

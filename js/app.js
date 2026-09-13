@@ -944,7 +944,7 @@ function initApp() {
       if (inputRealKey) inputRealKey.value = cfg.realKey || '';
       if (inputRealSecret) inputRealSecret.value = cfg.realSecret || '';
       const vercelInput = document.getElementById('input-vercel-url');
-      if (vercelInput) vercelInput.value = localStorage.getItem('vercel_proxy_url') || '';
+      if (vercelInput) vercelInput.value = localStorage.getItem('proxy_url') || localStorage.getItem('vercel_proxy_url') || '';
       updateModeUI();
       apiModal?.classList.remove('hidden');
     });
@@ -964,14 +964,16 @@ function initApp() {
         realKey: inputRealKey ? inputRealKey.value.trim() : '',
         realSecret: inputRealSecret ? inputRealSecret.value.trim() : ''
       });
-      // Guardar URL de Vercel proxy
+      // Guardar URL de Proxy (Netlify / Vercel)
       const vercelInput = document.getElementById('input-vercel-url');
       if (vercelInput) {
-        const vercelUrl = vercelInput.value.trim().replace(/\/$/, ''); // quitar trailing slash
-        if (vercelUrl) {
-          localStorage.setItem('vercel_proxy_url', vercelUrl);
-          console.log('[Config] Vercel proxy URL guardada:', vercelUrl);
+        const pUrl = vercelInput.value.trim().replace(/\/$/, ''); // quitar trailing slash
+        if (pUrl) {
+          localStorage.setItem('proxy_url', pUrl);
+          localStorage.setItem('vercel_proxy_url', pUrl);
+          console.log('[Config] Proxy URL guardada:', pUrl);
         } else {
+          localStorage.removeItem('proxy_url');
           localStorage.removeItem('vercel_proxy_url');
         }
       }

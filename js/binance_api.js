@@ -124,15 +124,15 @@ class BinanceAPI {
    * Obtiene velas históricas (Klines)
    */
   async getKlines(symbol, interval = '15m', limit = 100) {
-    const cleanSymbol = symbol.toUpperCase().replace('/', '');
-    const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
+    const isHosted = typeof window !== 'undefined' && 
+      (window.location?.hostname?.endsWith('netlify.app') || window.location?.hostname?.endsWith('vercel.app'));
 
     // Lista de endpoints a intentar en cascada (Prioridad 1: Directo a Binance con CORS '*' nativo en <300ms)
     const candidates = [
       `https://fapi.binance.com/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
       `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
-    if (isOnVercel) {
+    if (isHosted) {
       candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
     candidates.push(`https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
