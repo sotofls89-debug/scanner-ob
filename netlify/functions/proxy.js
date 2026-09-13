@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Binance API Serverless Function for Netlify (v2 Function)
  * Fallback serverless function para peticiones REST a Binance Futures
  */

@@ -1,14 +1,8 @@
-﻿[build]
+[build]
   publish = "."
-  command = "node bump-version.js"
+  command = "npm run build"
   functions = "netlify/functions"
 
-# 1. Edge Function para /api/proxy (baja latencia, edge global sin bloqueos regionales)
-[[edge_functions]]
-  path = "/api/proxy"
-  function = "proxy"
-
-# 2. Redirects directos de Edge CDN para Binance Futuros (CORS transparente)
 [[redirects]]
   from = "/proxy-binance-demo/*"
   to = "https://testnet.binancefuture.com/:splat"
@@ -27,13 +21,11 @@
   status = 200
   force = true
 
-# 3. Fallback a Serverless Function tradicional si Edge Function no está activa
 [[redirects]]
   from = "/api/proxy"
   to = "/.netlify/functions/proxy"
   status = 200
 
-# 4. Headers globales CORS y caché para PWA
 [[headers]]
   for = "/*"
   [headers.values]
