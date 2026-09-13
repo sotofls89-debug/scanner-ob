@@ -27,7 +27,7 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon'
 };
 
-export default async function handler(req, res) {
+function handleLocal(req, res) {
   // CORS Headers para todas las peticiones
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -165,18 +165,15 @@ function getLocalIp() {
 }
 
 const server = http.createServer((req, res) => {
-  handler(req, res);
+  handleLocal(req, res);
 });
 
-// En Vercel Serverless Function no se ejecuta server.listen (Vercel usa export default handler)
-if (!process.env.VERCEL) {
-  server.listen(PORT, '0.0.0.0', () => {
-    const localIp = getLocalIp();
-    console.log('============================================================');
-    console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo en puerto ${PORT}`);
-    console.log(`💻 En tu PC:     http://localhost:${PORT}`);
-    console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
-    console.log('============================================================');
-  });
-}
+server.listen(PORT, '0.0.0.0', () => {
+  const localIp = getLocalIp();
+  console.log('============================================================');
+  console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo en puerto ${PORT}`);
+  console.log(`💻 En tu PC:     http://localhost:${PORT}`);
+  console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
+  console.log('============================================================');
+});
 
