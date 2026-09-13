@@ -826,9 +826,15 @@ function initApp() {
     const refreshBtn = document.getElementById('btn-refresh');
     refreshBtn?.addEventListener('click', async () => {
       refreshBtn.classList.add('opacity-70', 'pointer-events-none');
-      await scanner.scanAll();
-      showToast('Datos actualizados de Binance Futuros', 'info');
-      refreshBtn.classList.remove('opacity-70', 'pointer-events-none');
+      try {
+        await scanner.scanAll();
+        showToast('Datos actualizados de Binance Futuros', 'info');
+      } catch (e) {
+        console.warn('[Refresh]', e);
+        showToast('Error al refrescar datos', 'danger');
+      } finally {
+        refreshBtn.classList.remove('opacity-70', 'pointer-events-none');
+      }
     });
 
     const powerBtn = document.getElementById('btn-power-toggle');
@@ -1474,15 +1480,26 @@ function initApp() {
     pendingTradeSignal = { ...signal };
     const pos = calculatePosition(signal.entry, signal.riskPercent);
 
-    document.getElementById('confirm-trade-title').textContent = `Ejecutar ${signal.type} en ${signal.symbol}`;
-    document.getElementById('ct-symbol').textContent = signal.symbol;
-    document.getElementById('ct-type').textContent   = signal.type;
-    document.getElementById('ct-type').className     = `font-bold ${signal.type === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`;
-    document.getElementById('ct-entry').textContent  = formatPrice(signal.entry, signal.symbol);
-    document.getElementById('ct-sl').textContent     = formatPrice(signal.stop, signal.symbol);
-    document.getElementById('ct-tp').textContent     = formatPrice(signal.takeProfit, signal.symbol);
-    document.getElementById('ct-qty').textContent    = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
-    document.getElementById('ct-lev').textContent    = pos.suggestedLeverage;
+    const titleEl = document.getElementById('confirm-trade-title');
+    const symEl   = document.getElementById('ct-symbol');
+    const typeEl  = document.getElementById('ct-type');
+    const entryEl = document.getElementById('ct-entry');
+    const slEl    = document.getElementById('ct-sl');
+    const tpEl    = document.getElementById('ct-tp');
+    const qtyEl   = document.getElementById('ct-qty');
+    const levEl   = document.getElementById('ct-lev');
+
+    if (titleEl) titleEl.textContent = `Ejecutar ${signal.type} en ${signal.symbol}`;
+    if (symEl)   symEl.textContent   = signal.symbol;
+    if (typeEl) {
+      typeEl.textContent = signal.type;
+      typeEl.className   = `font-bold ${signal.type === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`;
+    }
+    if (entryEl) entryEl.textContent = formatPrice(signal.entry, signal.symbol);
+    if (slEl)    slEl.textContent    = formatPrice(signal.stop, signal.symbol);
+    if (tpEl)    tpEl.textContent    = formatPrice(signal.takeProfit, signal.symbol);
+    if (qtyEl)   qtyEl.textContent   = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
+    if (levEl)   levEl.textContent   = pos.suggestedLeverage;
 
     updateConfirmModalUI();
     document.getElementById('modal-confirm-trade')?.classList.remove('hidden');

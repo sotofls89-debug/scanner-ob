@@ -72,13 +72,15 @@ class BinanceAPI {
    */
   async loadExchangeInfo() {
     const urls = [
-      'https://data-api.binance.vision/api/v3/exchangeInfo',
-      `${this.restBase}/exchangeInfo`
+      `${this.restBase}/exchangeInfo`,
+      'https://fapi.binance.com/fapi/v1/exchangeInfo',
+      'https://api.binance.com/api/v3/exchangeInfo',
+      'https://data-api.binance.vision/api/v3/exchangeInfo'
     ];
     for (const url of urls) {
       try {
         const res = await fetch(url, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined
         });
         if (!res.ok) continue;
         const data = await res.json();
@@ -125,21 +127,20 @@ class BinanceAPI {
     const cleanSymbol = symbol.toUpperCase().replace('/', '');
     const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
 
-    // Lista de endpoints a intentar en cascada (Prioridad 1: Binance Vision CDN público sin CORS ni bloqueos)
+    // Lista de endpoints a intentar en cascada (Prioridad 1: Directo a Binance con CORS '*' nativo en <300ms)
     const candidates = [
-      `https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
-      `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
+      `https://fapi.binance.com/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
     if (isOnVercel) {
-      candidates.push(`/proxy-binance-demo/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
       candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
-    candidates.push(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
+    candidates.push(`https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
 
     for (const url of candidates) {
       try {
         const response = await fetch(url, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined
         });
         if (!response.ok) continue;
         const rawData = await response.json();
@@ -155,7 +156,7 @@ class BinanceAPI {
           isClosed: true
         }));
       } catch (_) {
-        // Probar siguiente candidato
+        // Probar siguiente candidato sin demoras
       }
     }
 

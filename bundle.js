@@ -75,13 +75,15 @@ class BinanceAPI {
    */
   async loadExchangeInfo() {
     const urls = [
-      'https://data-api.binance.vision/api/v3/exchangeInfo',
-      `${this.restBase}/exchangeInfo`
+      `${this.restBase}/exchangeInfo`,
+      'https://fapi.binance.com/fapi/v1/exchangeInfo',
+      'https://api.binance.com/api/v3/exchangeInfo',
+      'https://data-api.binance.vision/api/v3/exchangeInfo'
     ];
     for (const url of urls) {
       try {
         const res = await fetch(url, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined
         });
         if (!res.ok) continue;
         const data = await res.json();
@@ -128,21 +130,20 @@ class BinanceAPI {
     const cleanSymbol = symbol.toUpperCase().replace('/', '');
     const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
 
-    // Lista de endpoints a intentar en cascada (Prioridad 1: Binance Vision CDN público sin CORS ni bloqueos)
+    // Lista de endpoints a intentar en cascada (Prioridad 1: Directo a Binance con CORS '*' nativo en <300ms)
     const candidates = [
-      `https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
-      `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
+      `https://fapi.binance.com/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
+      `https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
     if (isOnVercel) {
-      candidates.push(`/proxy-binance-demo/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
       candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
-    candidates.push(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
+    candidates.push(`https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
 
     for (const url of candidates) {
       try {
         const response = await fetch(url, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined
         });
         if (!response.ok) continue;
         const rawData = await response.json();
@@ -158,7 +159,7 @@ class BinanceAPI {
           isClosed: true
         }));
       } catch (_) {
-        // Probar siguiente candidato
+        // Probar siguiente candidato sin demoras
       }
     }
 
@@ -1903,7 +1904,31 @@ class BinanceTrade {
       proxyBase = 'https://scanner-ob.vercel.app';
     }
 
-    // ── Intento 1: Proxy HTTP ────────────────────────────────────────────────
+    // ── Intento 1: Directo a Binance Futuros (Cuenta Real soporta CORS '*' nativo en <200ms) ──
+    if (!this.isDemo()) {
+      try {
+        const directUrl = `${baseUrl}${path}?${fullPayload}`;
+        const res = await fetch(directUrl, {
+          method,
+          headers: corsHeaders,
+          signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+        });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          const data = JSON.parse(text);
+          if (data?.code && data.code !== 200 && data.msg) {
+            throw new Error(`Binance (${data.code}): ${data.msg}`);
+          }
+          console.log('[Trade] ✅ Directo Binance Futuros OK:', path);
+          return data;
+        }
+      } catch (errDirect) {
+        if (errDirect.message.startsWith('Binance')) throw errDirect;
+        console.warn('[Trade] ⚠️ Directo Binance no disponible, usando proxy:', errDirect.message);
+      }
+    }
+
+    // ── Intento 2: Proxy HTTP (Vercel Edge / Localhost) ──────────────────────
     try {
       const res = await fetch(`${proxyBase}${proxyPrefix}${path}?${fullPayload}`, {
         method,
@@ -1930,7 +1955,7 @@ class BinanceTrade {
       console.warn('[Trade] ⚠️ Proxy primario falló:', err1.message);
     }
 
-    // ── Intento 2: Fallback directo a endpoint /api/proxy de Vercel ───────────
+    // ── Intento 3: Fallback directo a endpoint /api/proxy de Vercel ───────────
     if (!isOnVercel) {
       try {
         const vercelFallback = `https://scanner-ob.vercel.app/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
@@ -1954,7 +1979,7 @@ class BinanceTrade {
       }
     }
 
-    // ── Intento 3: Directo a Binance (entornos sin restricción CORS) ──────────
+    // ── Intento 4: Directo a Binance (último recurso) ────────────────────────
     try {
       const res = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
       const text = await res.text();
@@ -3505,9 +3530,15 @@ function initApp() {
     const refreshBtn = document.getElementById('btn-refresh');
     refreshBtn?.addEventListener('click', async () => {
       refreshBtn.classList.add('opacity-70', 'pointer-events-none');
-      await scanner.scanAll();
-      showToast('Datos actualizados de Binance Futuros', 'info');
-      refreshBtn.classList.remove('opacity-70', 'pointer-events-none');
+      try {
+        await scanner.scanAll();
+        showToast('Datos actualizados de Binance Futuros', 'info');
+      } catch (e) {
+        console.warn('[Refresh]', e);
+        showToast('Error al refrescar datos', 'danger');
+      } finally {
+        refreshBtn.classList.remove('opacity-70', 'pointer-events-none');
+      }
     });
 
     const powerBtn = document.getElementById('btn-power-toggle');
@@ -4153,15 +4184,26 @@ function initApp() {
     pendingTradeSignal = { ...signal };
     const pos = calculatePosition(signal.entry, signal.riskPercent);
 
-    document.getElementById('confirm-trade-title').textContent = `Ejecutar ${signal.type} en ${signal.symbol}`;
-    document.getElementById('ct-symbol').textContent = signal.symbol;
-    document.getElementById('ct-type').textContent   = signal.type;
-    document.getElementById('ct-type').className     = `font-bold ${signal.type === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`;
-    document.getElementById('ct-entry').textContent  = formatPrice(signal.entry, signal.symbol);
-    document.getElementById('ct-sl').textContent     = formatPrice(signal.stop, signal.symbol);
-    document.getElementById('ct-tp').textContent     = formatPrice(signal.takeProfit, signal.symbol);
-    document.getElementById('ct-qty').textContent    = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
-    document.getElementById('ct-lev').textContent    = pos.suggestedLeverage;
+    const titleEl = document.getElementById('confirm-trade-title');
+    const symEl   = document.getElementById('ct-symbol');
+    const typeEl  = document.getElementById('ct-type');
+    const entryEl = document.getElementById('ct-entry');
+    const slEl    = document.getElementById('ct-sl');
+    const tpEl    = document.getElementById('ct-tp');
+    const qtyEl   = document.getElementById('ct-qty');
+    const levEl   = document.getElementById('ct-lev');
+
+    if (titleEl) titleEl.textContent = `Ejecutar ${signal.type} en ${signal.symbol}`;
+    if (symEl)   symEl.textContent   = signal.symbol;
+    if (typeEl) {
+      typeEl.textContent = signal.type;
+      typeEl.className   = `font-bold ${signal.type === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`;
+    }
+    if (entryEl) entryEl.textContent = formatPrice(signal.entry, signal.symbol);
+    if (slEl)    slEl.textContent    = formatPrice(signal.stop, signal.symbol);
+    if (tpEl)    tpEl.textContent    = formatPrice(signal.takeProfit, signal.symbol);
+    if (qtyEl)   qtyEl.textContent   = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
+    if (levEl)   levEl.textContent   = pos.suggestedLeverage;
 
     updateConfirmModalUI();
     document.getElementById('modal-confirm-trade')?.classList.remove('hidden');

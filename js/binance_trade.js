@@ -229,7 +229,31 @@ class BinanceTrade {
       proxyBase = 'https://scanner-ob.vercel.app';
     }
 
-    // ── Intento 1: Proxy HTTP ────────────────────────────────────────────────
+    // ── Intento 1: Directo a Binance Futuros (Cuenta Real soporta CORS '*' nativo en <200ms) ──
+    if (!this.isDemo()) {
+      try {
+        const directUrl = `${baseUrl}${path}?${fullPayload}`;
+        const res = await fetch(directUrl, {
+          method,
+          headers: corsHeaders,
+          signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+        });
+        const text = await res.text();
+        if (text && !text.trim().startsWith('<') && !text.trim().startsWith('<!DOCTYPE')) {
+          const data = JSON.parse(text);
+          if (data?.code && data.code !== 200 && data.msg) {
+            throw new Error(`Binance (${data.code}): ${data.msg}`);
+          }
+          console.log('[Trade] ✅ Directo Binance Futuros OK:', path);
+          return data;
+        }
+      } catch (errDirect) {
+        if (errDirect.message.startsWith('Binance')) throw errDirect;
+        console.warn('[Trade] ⚠️ Directo Binance no disponible, usando proxy:', errDirect.message);
+      }
+    }
+
+    // ── Intento 2: Proxy HTTP (Vercel Edge / Localhost) ──────────────────────
     try {
       const res = await fetch(`${proxyBase}${proxyPrefix}${path}?${fullPayload}`, {
         method,
@@ -256,7 +280,7 @@ class BinanceTrade {
       console.warn('[Trade] ⚠️ Proxy primario falló:', err1.message);
     }
 
-    // ── Intento 2: Fallback directo a endpoint /api/proxy de Vercel ───────────
+    // ── Intento 3: Fallback directo a endpoint /api/proxy de Vercel ───────────
     if (!isOnVercel) {
       try {
         const vercelFallback = `https://scanner-ob.vercel.app/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
@@ -280,7 +304,7 @@ class BinanceTrade {
       }
     }
 
-    // ── Intento 3: Directo a Binance (entornos sin restricción CORS) ──────────
+    // ── Intento 4: Directo a Binance (último recurso) ────────────────────────
     try {
       const res = await fetch(`${baseUrl}${path}?${fullPayload}`, { method, headers: corsHeaders });
       const text = await res.text();

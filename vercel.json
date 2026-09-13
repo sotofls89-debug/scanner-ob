@@ -1,5 +1,4 @@
 {
-  "regions": ["fra1"],
   "rewrites": [
     {
       "source": "/proxy-binance-demo/:path*",

@@ -4,7 +4,7 @@
  */
 
 // ⚙️ Versión del caché — se actualiza automáticamente con el script bump-version.js
-const CACHE_VERSION = 'v20260913-1335';
+const CACHE_VERSION = 'v20260913-1358';
 const CACHE_NAME = `smc-scanner-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -14,24 +14,25 @@ const STATIC_ASSETS = [
   './bundle.js',
   './manifest.json',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  './js/app.js',
-  './js/scanner.js',
-  './js/smc_detector.js',
-  './js/binance_api.js',
-  './js/trade_tracker.js',
-  './js/binance_trade.js',
-  './js/cloud_sync.js'
+  './icons/icon-512.png'
 ];
 
 // ─────────────────────────────────────────────
-// INSTALL: precachea todos los assets estáticos
+// INSTALL: precachea todos los assets estáticos de forma resiliente
 // ─────────────────────────────────────────────
 self.addEventListener('install', event => {
   console.log(`[SW] Instalando nueva versión: ${CACHE_NAME}`);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(STATIC_ASSETS))
+      .then(async cache => {
+        for (const asset of STATIC_ASSETS) {
+          try {
+            await cache.add(asset);
+          } catch (e) {
+            console.warn(`[SW] Advertencia al cachear ${asset}:`, e.message);
+          }
+        }
+      })
       .then(() => self.skipWaiting()) // Activa el nuevo SW inmediatamente
   );
 });
@@ -75,7 +76,7 @@ self.addEventListener('fetch', event => {
   // Para iconos y manifest: caché primero (raramente cambian)
   if (url.pathname.includes('/icons/') || url.pathname.includes('manifest.json')) {
     event.respondWith(
-      caches.match(event.request).then(cached => cached || fetch(event.request))
+      caches.match(event.request, { ignoreSearch: true }).then(cached => cached || fetch(event.request))
     );
     return;
   }
@@ -93,7 +94,7 @@ self.addEventListener('fetch', event => {
       })
       .catch(() => {
         // Sin conexión: sirve desde caché
-        return caches.match(event.request);
+        return caches.match(event.request, { ignoreSearch: true });
       })
   );
 });
