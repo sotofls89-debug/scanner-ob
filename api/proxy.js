@@ -1,72 +1,98 @@
 /**
- * Binance API Serverless Proxy for Vercel
- * Resuelve problemas de CORS y preflight OPTIONS para Binance Futuros (Testnet y Real).
+ * Binance API Edge Proxy for Vercel
+ * Ejecuta en la red Edge de Vercel (0ms cold start, ultra-rápido, sin límites de crédito).
+ * Intercepta y reenvía peticiones a Binance Futures REST API (Testnet y Real).
  */
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-MBX-APIKEY, Content-Type, Authorization, *');
 
-  // Responder inmediatamente 200 OK al preflight OPTIONS del navegador
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(request) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-MBX-APIKEY, x-mbx-apikey, Authorization, *',
+    'Access-Control-Max-Age': '86400',
+  };
+
+  // 1. Manejo instantáneo de preflight CORS (OPTIONS)
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
   }
 
   try {
-    const urlObj = new URL(req.url, 'http://localhost');
-    const params = new URLSearchParams(urlObj.search);
+    const url = new URL(request.url);
+    const searchParams = new URLSearchParams(url.search);
 
-    const isDemo = params.get('isDemo') === 'true' || params.get('target') === 'demo' || req.url.includes('demo');
-    const baseUrl = isDemo ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
+    const isDemo = searchParams.get('isDemo') === 'true' || 
+                   url.pathname.includes('demo') || 
+                   searchParams.get('target') === 'demo';
+    const targetBase = isDemo ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com';
 
-    let endpoint = params.get('endpoint') || params.get('path') || '';
+    let endpoint = searchParams.get('endpoint') || searchParams.get('path') || '';
     if (!endpoint) {
-      const pathname = urlObj.pathname;
-      if (pathname.includes('/fapi/')) {
-        endpoint = pathname.substring(pathname.indexOf('/fapi/'));
+      if (url.pathname.includes('/fapi/')) {
+        endpoint = url.pathname.substring(url.pathname.indexOf('/fapi/'));
       } else {
         endpoint = '/fapi/v1/order';
       }
     }
     if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
 
-    // Eliminar parametros de enrutamiento interno
-    params.delete('isDemo');
-    params.delete('target');
-    params.delete('endpoint');
-    params.delete('path');
+    // Eliminar parámetros internos del proxy para que no contaminen la firma de Binance
+    searchParams.delete('isDemo');
+    searchParams.delete('target');
+    searchParams.delete('endpoint');
+    searchParams.delete('path');
 
-    const qs = params.toString();
-    const targetUrl = `${baseUrl}${endpoint}${qs ? '?' + qs : ''}`;
+    const qs = searchParams.toString();
+    const targetUrl = `${targetBase}${endpoint}${qs ? '?' + qs : ''}`;
 
-    const forwardHeaders = {};
-    const apiKey = req.headers['x-mbx-apikey'] || req.headers['X-MBX-APIKEY'];
-    if (apiKey) forwardHeaders['X-MBX-APIKEY'] = apiKey;
-    if (req.headers['content-type']) forwardHeaders['Content-Type'] = req.headers['content-type'];
+    const forwardHeaders = new Headers();
+    const apiKey = request.headers.get('X-MBX-APIKEY') || 
+                   request.headers.get('x-mbx-apikey') || '';
+    if (apiKey) {
+      forwardHeaders.set('X-MBX-APIKEY', apiKey);
+    }
+    const contentType = request.headers.get('content-type') || 'application/x-www-form-urlencoded';
+    forwardHeaders.set('content-type', contentType);
+    forwardHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
 
-    const fetchOptions = {
-      method: req.method,
-      headers: forwardHeaders
+    const fetchInit = {
+      method: request.method,
+      headers: forwardHeaders,
     };
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (req.body) {
-        fetchOptions.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-      }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      try {
+        const bodyText = await request.text();
+        if (bodyText && bodyText.length > 0) {
+          fetchInit.body = bodyText;
+        }
+      } catch (_) {}
     }
 
-    const response = await fetch(targetUrl, fetchOptions);
-    const text = await response.text();
+    const response = await fetch(targetUrl, fetchInit);
+    const responseBody = await response.text();
 
-    res.status(response.status);
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-    try {
-      res.json(JSON.parse(text));
-    } catch {
-      res.send(text);
-    }
+    return new Response(responseBody, {
+      status: response.status,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...corsHeaders,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ code: -1, msg: 'Error en Proxy Vercel: ' + err.message });
+    return new Response(JSON.stringify({ code: -1, msg: 'Error en Vercel Proxy: ' + err.message }), {
+      status: 502,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...corsHeaders,
+      },
+    });
   }
 }

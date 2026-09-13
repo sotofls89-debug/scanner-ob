@@ -1,25 +1,16 @@
 {
-  "functions": {
-    "server.js": {
-      "includeFiles": "**"
-    }
-  },
   "rewrites": [
     {
       "source": "/proxy-binance-demo/:path*",
-      "destination": "/server.js"
+      "destination": "/api/proxy?isDemo=true&endpoint=/:path*"
     },
     {
       "source": "/proxy-binance-real/:path*",
-      "destination": "/server.js"
+      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
     },
     {
       "source": "/proxy-binance/:path*",
-      "destination": "/server.js"
-    },
-    {
-      "source": "/api/proxy",
-      "destination": "/server.js"
+      "destination": "/api/proxy?isDemo=false&endpoint=/:path*"
     }
   ],
   "headers": [
@@ -36,7 +27,7 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "X-MBX-APIKEY, Content-Type, Authorization, *"
+          "value": "Content-Type, X-MBX-APIKEY, x-mbx-apikey, Authorization, *"
         }
       ]
     },

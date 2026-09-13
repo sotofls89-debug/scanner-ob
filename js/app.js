@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Motor de Ejecución Directa de Órdenes (API Binance Futuros)
   const binanceTrade = new BinanceTrade();
+  window.binanceTrade = binanceTrade;
 
   // Signal pendiente de confirmación en el modal de trade
   let pendingTradeSignal = null;
@@ -80,7 +81,14 @@ document.addEventListener('DOMContentLoaded', () => {
   scanner = new CryptoScanner(binanceAPI, smcDetector, tradeTracker, {
     scanIntervalMs: 15000,
     onUpdate: (results) => {
-      try { renderApp(results); } catch (e) { console.warn('[App] Error en renderApp:', e); }
+      try {
+        if (window.binanceTrade && typeof window.binanceTrade.checkLocalSL === 'function') {
+          results.forEach(r => {
+            if (r.price) window.binanceTrade.checkLocalSL(r.symbol, r.price);
+          });
+        }
+        renderApp(results);
+      } catch (e) { console.warn('[App] Error en renderApp:', e); }
     },
     onAlert: handleAlert
   });
