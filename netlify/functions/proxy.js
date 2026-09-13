@@ -1,6 +1,6 @@
 /**
  * Binance API Serverless Function for Netlify (v2 Function)
- * Fallback serverless function para peticiones REST a Binance Futures
+ * Proxy REST para Binance Futures (Testnet y Real)
  */
 
 export default async (request, context) => {
@@ -42,8 +42,17 @@ export default async (request, context) => {
     searchParams.delete('endpoint');
     searchParams.delete('path');
 
+    let cleanEndpoint = endpoint;
+    let endpointQs = '';
+    if (cleanEndpoint.includes('?')) {
+      const parts = cleanEndpoint.split('?');
+      cleanEndpoint = parts[0];
+      endpointQs = parts.slice(1).join('?');
+    }
+
     const qs = searchParams.toString();
-    const targetUrl = `${targetBase}${endpoint}${qs ? '?' + qs : ''}`;
+    const finalQs = [endpointQs, qs].filter(Boolean).join('&');
+    const targetUrl = `${targetBase}${cleanEndpoint}${finalQs ? '?' + finalQs : ''}`;
 
     const forwardHeaders = new Headers();
     const apiKey = request.headers.get('X-MBX-APIKEY') || 

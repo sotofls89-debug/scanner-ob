@@ -5,21 +5,18 @@
 
 [[redirects]]
   from = "/proxy-binance-demo/*"
-  to = "https://testnet.binancefuture.com/:splat"
+  to = "/.netlify/functions/proxy?isDemo=true&endpoint=/:splat"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/proxy-binance-real/*"
-  to = "https://fapi.binance.com/:splat"
+  to = "/.netlify/functions/proxy?isDemo=false&endpoint=/:splat"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/proxy-binance/*"
-  to = "https://fapi.binance.com/:splat"
+  to = "/.netlify/functions/proxy?isDemo=false&endpoint=/:splat"
   status = 200
-  force = true
 
 [[redirects]]
   from = "/api/proxy"

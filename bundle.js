@@ -1960,27 +1960,27 @@ class BinanceTrade {
     }
 
     // ── Intento 3: Fallback directo a endpoint /api/proxy de Netlify / Vercel ──
-    if (!isHosted) {
-      try {
-        const hostedFallback = `${proxyBase}/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
-        const res = await fetch(hostedFallback, {
-          method,
-          headers: corsHeaders,
-          signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
-        });
-        const text = await res.text();
-        if (text && !text.trim().startsWith('<')) {
-          const data = JSON.parse(text);
-          if (data?.code && data.code !== 200 && data.msg) {
-            throw new Error(`Binance (${data.code}): ${data.msg}`);
-          }
-          console.log('[Trade] ✅ Hosted fallback proxy OK');
-          return data;
+    try {
+      const fallbackUrl = proxyBase
+        ? `${proxyBase}/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`
+        : `/api/proxy?isDemo=${this.isDemo()}&endpoint=${encodeURIComponent(path)}&${fullPayload}`;
+      const res = await fetch(fallbackUrl, {
+        method,
+        headers: corsHeaders,
+        signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+      });
+      const text = await res.text();
+      if (text && !text.trim().startsWith('<')) {
+        const data = JSON.parse(text);
+        if (data?.code && data.code !== 200 && data.msg) {
+          throw new Error(`Binance (${data.code}): ${data.msg}`);
         }
-      } catch (err2) {
-        if (err2.message.startsWith('Binance')) throw err2;
-        console.warn('[Trade] ⚠️ Hosted fallback proxy falló:', err2.message);
+        console.log('[Trade] ✅ Hosted fallback proxy OK');
+        return data;
       }
+    } catch (err2) {
+      if (err2.message.startsWith('Binance')) throw err2;
+      console.warn('[Trade] ⚠️ Hosted fallback proxy falló:', err2.message);
     }
 
     // ── Intento 4: Directo a Binance (último recurso) ────────────────────────
@@ -2152,6 +2152,12 @@ class BinanceTrade {
   }
 
   async getPositionMode() {
+    try {
+      const res = await this.httpRequest('GET', '/fapi/v1/positionSide/dual');
+      if (res && typeof res.dualSidePosition === 'boolean') {
+        return res.dualSidePosition ? 'HEDGE' : 'ONE_WAY';
+      }
+    } catch (_) {}
     return 'ONE_WAY';
   }
 
