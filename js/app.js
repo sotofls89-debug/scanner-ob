@@ -1,7 +1,7 @@
 /**
  * Controlador de Señales Order Block + Integración Discord Webhooks + Binance USDT-M Futuros + Calculadora de Apalancamiento
  */
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   const binanceAPI = new BinanceAPI();
   binanceAPI.setMarketType('futures');
 
@@ -1663,6 +1663,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Exponer función para que los botones de las tarjetas la llamen
   window.openTradeConfirmModal = openTradeConfirmModal;
+}
 
-});
+// Inicialización infalible: Si el DOM ya cargó (PWA / caché / script al final del body), ejecutar de inmediato
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
+
 

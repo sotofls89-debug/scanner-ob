@@ -4,7 +4,7 @@
  */
 
 // ⚙️ Versión del caché — se actualiza automáticamente con el script bump-version.js
-const CACHE_VERSION = 'v20260913-1324';
+const CACHE_VERSION = 'v20260913-1335';
 const CACHE_NAME = `smc-scanner-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -66,6 +66,7 @@ self.addEventListener('fetch', event => {
     url.hostname.includes('binance') || 
     url.hostname.includes('discord') || 
     url.pathname.includes('/proxy-binance') ||
+    url.pathname.includes('/api/proxy') ||
     url.port === '3000'
   ) {
     return;
