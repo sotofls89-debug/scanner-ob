@@ -74,28 +74,36 @@ class BinanceAPI {
    * Consulta exchangeInfo oficial de Binance para obtener el tickSize exacto de cada par
    */
   async loadExchangeInfo() {
-    try {
-      const url = `${this.restBase}/exchangeInfo`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = await res.json();
-      
-      if (data && Array.isArray(data.symbols)) {
-        data.symbols.forEach(s => {
-          const priceFilter = s.filters ? s.filters.find(f => f.filterType === 'PRICE_FILTER') : null;
-          if (priceFilter && priceFilter.tickSize) {
-            const tick = parseFloat(priceFilter.tickSize);
-            if (tick > 0) {
-              const decimals = Math.max(0, -Math.floor(Math.log10(tick)));
-              this.symbolPrecisions.set(s.symbol, decimals);
-            }
-          } else if (typeof s.pricePrecision === 'number') {
-            this.symbolPrecisions.set(s.symbol, s.pricePrecision);
-          }
+    const urls = [
+      'https://data-api.binance.vision/api/v3/exchangeInfo',
+      `${this.restBase}/exchangeInfo`
+    ];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
         });
+        if (!res.ok) continue;
+        const data = await res.json();
+        
+        if (data && Array.isArray(data.symbols)) {
+          data.symbols.forEach(s => {
+            const priceFilter = s.filters ? s.filters.find(f => f.filterType === 'PRICE_FILTER') : null;
+            if (priceFilter && priceFilter.tickSize) {
+              const tick = parseFloat(priceFilter.tickSize);
+              if (tick > 0) {
+                const decimals = Math.max(0, -Math.floor(Math.log10(tick)));
+                this.symbolPrecisions.set(s.symbol, decimals);
+              }
+            } else if (typeof s.pricePrecision === 'number') {
+              this.symbolPrecisions.set(s.symbol, s.pricePrecision);
+            }
+          });
+          return;
+        }
+      } catch (e) {
+        // Probar siguiente
       }
-    } catch (e) {
-      console.warn('[BinanceAPI] Fallback a precisiones por defecto:', e.message);
     }
   }
 
@@ -120,11 +128,13 @@ class BinanceAPI {
     const cleanSymbol = symbol.toUpperCase().replace('/', '');
     const isOnVercel = typeof window !== 'undefined' && window.location?.hostname?.endsWith('vercel.app');
 
-    // Lista de endpoints a intentar en cascada
+    // Lista de endpoints a intentar en cascada (Prioridad 1: Binance Vision CDN público sin CORS ni bloqueos)
     const candidates = [
+      `https://data-api.binance.vision/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`,
       `${this.restBase}/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`
     ];
     if (isOnVercel) {
+      candidates.push(`/proxy-binance-demo/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
       candidates.push(`/proxy-binance-real/fapi/v1/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
     }
     candidates.push(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}&limit=${limit}`);
@@ -132,7 +142,7 @@ class BinanceAPI {
     for (const url of candidates) {
       try {
         const response = await fetch(url, {
-          signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
         });
         if (!response.ok) continue;
         const rawData = await response.json();

@@ -6,6 +6,7 @@
 
 export const config = {
   runtime: 'edge',
+  regions: ['fra1', 'cdg1'], // Frankfurt & París (Europa) para evitar restricción geográfica de Binance en EE.UU.
 };
 
 export default async function handler(request) {
