@@ -1,14 +1,14 @@
 ﻿[build]
   publish = "."
+  command = "node bump-version.js"
   functions = "netlify/functions"
-  edge_functions = "netlify/edge-functions"
 
 # 1. Edge Function para /api/proxy (baja latencia, edge global sin bloqueos regionales)
 [[edge_functions]]
   path = "/api/proxy"
   function = "proxy"
 
-# 2. Redirects directos de Edge CDN para Binance Futuros (CORS trasparente)
+# 2. Redirects directos de Edge CDN para Binance Futuros (CORS transparente)
 [[redirects]]
   from = "/proxy-binance-demo/*"
   to = "https://testnet.binancefuture.com/:splat"
