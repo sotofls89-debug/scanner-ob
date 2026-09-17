@@ -2008,24 +2008,51 @@ class BinanceTrade {
     }
 
     // Detectar órdenes condicionales (Stop Loss o Take Profit condicional)
-    // NOTA CRÍTICA: Binance WebSocket API (order.place) RECHAZA órdenes condicionales (-4120):
-    // "Order type not supported for this endpoint. Please use the Algo Order API endpoints instead."
-    // Las órdenes condicionales (STOP_MARKET, STOP, TAKE_PROFIT_MARKET) DEBEN ir obligatoriamente por HTTP Proxy REST.
+    // Desde diciembre de 2025, Binance migró las órdenes condicionales al servicio Algo:
+    // En WS: se usa el método 'algoOrder.place' con algoType: 'CONDITIONAL'.
+    // En REST: se usa '/fapi/v1/algoOrder' (la ruta clásica /fapi/v1/order da error -4120).
     const isConditional = params.type === 'STOP_MARKET' || 
                           params.type === 'STOP' || 
                           params.type === 'TAKE_PROFIT_MARKET' || 
                           params.type === 'TAKE_PROFIT' ||
                           params.type === 'TRAILING_STOP_MARKET';
 
-    // Endpoints que requieren autenticación → usar WebSocket API (sin CORS, funciona 100% en GitHub Pages y móvil)
-    // EXCEPTO órdenes condicionales que van por HTTP REST
+    if (isConditional) {
+      if (method === 'POST') {
+        const algoParams = {
+          algoType: 'CONDITIONAL',
+          ...params
+        };
+        try {
+          const result = await this.wsRequest('algoOrder.place', algoParams);
+          console.log(`[Trade] ✅ WS algoOrder.place OK:`, result);
+          return result;
+        } catch (wsErr) {
+          console.warn(`[Trade] ⚠️ WS algoOrder.place falló (${wsErr.message}), probando HTTP REST /fapi/v1/algoOrder...`);
+          try {
+            return await this.httpRequest('POST', '/fapi/v1/algoOrder', algoParams);
+          } catch (httpErr) {
+            console.error(`[Trade] ❌ HTTP algoOrder falló:`, httpErr.message);
+            throw wsErr;
+          }
+        }
+      } else if (method === 'DELETE') {
+        try {
+          return await this.wsRequest('algoOrder.cancel', params);
+        } catch (delWsErr) {
+          return await this.httpRequest('DELETE', '/fapi/v1/algoOrder', params);
+        }
+      }
+    }
+
+    // Endpoints estándar que requieren autenticación → usar WebSocket API (sin CORS)
     const WS_ENDPOINTS = {
       'POST /fapi/v1/order':    'order.place',
       'DELETE /fapi/v1/order':  'order.cancel',
       'GET /fapi/v2/account':   'account.status'
     };
 
-    const wsMethod = !isConditional ? WS_ENDPOINTS[`${method} ${path}`] : null;
+    const wsMethod = WS_ENDPOINTS[`${method} ${path}`] || null;
 
     if (wsMethod) {
       try {
@@ -2040,7 +2067,7 @@ class BinanceTrade {
       }
     }
 
-    // Para consultas no soportadas por WS (o condicionales como Stop Loss): usar HTTP Proxy REST
+    // Para consultas no soportadas por WS: usar HTTP Proxy REST
     return this.httpRequest(method, path, params);
   }
 
@@ -2271,9 +2298,7 @@ class BinanceTrade {
 
     // ─── 5. Stop Loss ─────────────────────────────────────────────────────────
     try {
-      // Intento 1: STOP_MARKET con closePosition='true' (Estándar oficial Binance Futures One-Way)
-      // En modo One-Way, closePosition='true' cierra el 100% de la posición sin necesidad
-      // de calcular contratos ni riesgo de error -1106 (reduceOnly conflicto).
+      // Intento 1: STOP_MARKET con closePosition='true' via Binance Algo Order
       const slParams = {
         symbol:        cleanSym,
         side:          closeSide,
@@ -2286,13 +2311,14 @@ class BinanceTrade {
         slParams.positionSide = positionSide;
         slParams.quantity     = finalQty;
       } else {
+        slParams.positionSide  = 'BOTH';
         slParams.closePosition = 'true';
       }
 
-      // Se usa httpRequest directamente (HTTP Proxy REST) porque Binance WS API no soporta STOP_MARKET (-4120)
-      const slOrder = await this.httpRequest('POST', '/fapi/v1/order', slParams);
-      slOrderId = slOrder.orderId || slOrder.clientOrderId || 'SL_OK';
-      console.log('[Trade] ✅ SL colocado en Binance (STOP_MARKET closePosition):', slOrderId);
+      // Se usa this.request que enruta automáticamente a WS algoOrder.place (sin CORS ni bloqueos US)
+      const slOrder = await this.request('POST', '/fapi/v1/order', slParams);
+      slOrderId = slOrder?.algoId || slOrder?.orderId || slOrder?.clientAlgoId || 'SL_OK';
+      console.log('[Trade] ✅ SL colocado en Binance (algoOrder closePosition):', slOrderId);
     } catch (slErr) {
       console.warn('[Trade] SL Intento 1 falló:', slErr.message, '→ evaluando alternativas...');
       slErrorMsg = slErr.message;
@@ -2314,16 +2340,17 @@ class BinanceTrade {
           type:          'STOP_MARKET',
           stopPrice:     safeStopPrice,
           quantity:      finalQty,
-          reduceOnly:    'true',
           workingType:   'MARK_PRICE'
         };
         if (isDual) {
-          delete slQtyParams.reduceOnly;
           slQtyParams.positionSide = positionSide;
+        } else {
+          slQtyParams.positionSide = 'BOTH';
+          slQtyParams.reduceOnly   = 'true';
         }
-        const slOrder2 = await this.httpRequest('POST', '/fapi/v1/order', slQtyParams);
-        slOrderId = slOrder2.orderId || slOrder2.clientOrderId || 'SL_OK';
-        console.log('[Trade] ✅ SL colocado (STOP_MARKET reduceOnly):', slOrderId);
+        const slOrder2 = await this.request('POST', '/fapi/v1/order', slQtyParams);
+        slOrderId = slOrder2?.algoId || slOrder2?.orderId || slOrder2?.clientAlgoId || 'SL_OK';
+        console.log('[Trade] ✅ SL colocado (algoOrder reduceOnly):', slOrderId);
         slErrorMsg = null;
       } catch (e2) {
         console.warn('[Trade] SL Intento 2 reduceOnly falló:', e2.message);
@@ -2340,16 +2367,17 @@ class BinanceTrade {
             stopPrice:     safeStopPrice,
             price:         safeStopPrice,
             quantity:      finalQty,
-            reduceOnly:    'true',
             timeInForce:   'GTC',
             workingType:   'MARK_PRICE'
           };
           if (isDual) {
-            delete slLimitParams.reduceOnly;
             slLimitParams.positionSide = positionSide;
+          } else {
+            slLimitParams.positionSide = 'BOTH';
+            slLimitParams.reduceOnly   = 'true';
           }
-          const slOrder3 = await this.httpRequest('POST', '/fapi/v1/order', slLimitParams);
-          slOrderId = slOrder3.orderId || slOrder3.clientOrderId || 'SL_OK';
+          const slOrder3 = await this.request('POST', '/fapi/v1/order', slLimitParams);
+          slOrderId = slOrder3?.algoId || slOrder3?.orderId || slOrder3?.clientAlgoId || 'SL_OK';
           console.log('[Trade] ✅ SL colocado (STOP Limit):', slOrderId);
           slErrorMsg = null;
         } catch (e3) {
@@ -2359,12 +2387,10 @@ class BinanceTrade {
       }
 
       // Red de Seguridad de Software Local (Emergency Watcher)
-      // Si Binance rechazó el SL nativo, activamos el vigilante local para no dejar la posición desprotegida
+      // Activar vigilante local si Binance rechazó el SL nativo
       if (!slOrderId) {
         console.warn(`[Trade] 🛡️ Activando Stop Loss de Software Local para ${cleanSym} en ${finalStopPrice}`);
         this.registerLocalSL(cleanSym, closeSide, finalQty, finalStopPrice, isLong);
-        slOrderId = 'LOCAL_SL_ACTIVO';
-        slErrorMsg = null;
       }
     }
 
@@ -2383,13 +2409,15 @@ class BinanceTrade {
       if (isDual) {
         delete tpParams.reduceOnly;
         tpParams.positionSide = positionSide;
+      } else {
+        tpParams.positionSide = 'BOTH';
       }
 
       const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
-      tpOrderId = tpOrder.orderId || tpOrder.clientOrderId || 'TP_OK';
+      tpOrderId = tpOrder?.algoId || tpOrder?.orderId || tpOrder?.clientAlgoId || 'TP_OK';
       console.log('[Trade] ✅ TP colocado (LIMIT GTC):', tpOrderId);
     } catch (tpErr) {
-      console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET por HTTP...');
+      console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET...');
       try {
         const tpMkt = {
           symbol:      cleanSym,
@@ -2397,15 +2425,16 @@ class BinanceTrade {
           type:        'TAKE_PROFIT_MARKET',
           stopPrice:   formattedTP,
           quantity:    finalQty,
-          reduceOnly:  'true',
           workingType: 'MARK_PRICE'
         };
         if (isDual) {
-          delete tpMkt.reduceOnly;
           tpMkt.positionSide = positionSide;
+        } else {
+          tpMkt.positionSide = 'BOTH';
+          tpMkt.reduceOnly   = 'true';
         }
-        const tpOrder2 = await this.httpRequest('POST', '/fapi/v1/order', tpMkt);
-        tpOrderId = tpOrder2.orderId || tpOrder2.clientOrderId || 'TP_OK';
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpMkt);
+        tpOrderId = tpOrder2?.algoId || tpOrder2?.orderId || tpOrder2?.clientAlgoId || 'TP_OK';
         console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
       } catch (e2) {
         tpErrorMsg = `TP (${e2.message})`;
@@ -2460,19 +2489,23 @@ class BinanceTrade {
         }
       } catch (delErr) {}
 
-      // 2. Colocar nuevo Stop Loss a Breakeven via orden estándar → WebSocket
+      // 2. Colocar nuevo Stop Loss a Breakeven via Algo Order → WebSocket
       const beParams = {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
         stopPrice:     bePrice,
-        closePosition: 'true',
         workingType:   'MARK_PRICE'
       };
-      if (isDual) beParams.positionSide = positionSide;
+      if (isDual) {
+        beParams.positionSide = positionSide;
+      } else {
+        beParams.positionSide  = 'BOTH';
+        beParams.closePosition = 'true';
+      }
 
       const slOrder = await this.request('POST', '/fapi/v1/order', beParams);
-      console.log('[Trade] ✅ BE SL colocado:', slOrder.orderId);
+      console.log('[Trade] ✅ BE SL colocado:', slOrder?.algoId || slOrder?.orderId);
       return slOrder;
     } catch (e) {
       console.warn('[BinanceTrade] Error moviendo a BE:', e.message);
