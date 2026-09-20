@@ -262,24 +262,39 @@ class CryptoScanner {
 
   hasUserOpenTrade(symbol) {
     if (!symbol) return false;
-    return this.userExecutedTrades.some(t => t.symbol === symbol && t.status === 'OPEN');
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return this.userExecutedTrades.some(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    });
   }
 
   getUserOpenTrade(symbol) {
     if (!symbol) return null;
-    return this.userExecutedTrades.find(t => t.symbol === symbol && t.status === 'OPEN') || null;
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return this.userExecutedTrades.find(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    }) || null;
   }
 
   isSignalExecutedOrDismissed(signalId, symbol = '') {
     if (signalId && this.dismissedSignals.has(signalId)) return true;
     if (symbol && this.hasUserOpenTrade(symbol)) return true;
-    if (signalId && this.userExecutedTrades.some(t => t.id === signalId && t.status === 'OPEN')) return true;
+    if (signalId) {
+      const target = this.userExecutedTrades.find(t => t.id === signalId);
+      if (target && target.status === 'OPEN') return true;
+    }
     return false;
   }
 
   updateUserExecutedTrades(symbol, candles15m) {
     if (!Array.isArray(candles15m) || candles15m.length === 0) return;
-    const openTrades = this.userExecutedTrades.filter(t => t.symbol === symbol && t.status === 'OPEN');
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const openTrades = this.userExecutedTrades.filter(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    });
     if (openTrades.length === 0) return;
 
     let changed = false;
@@ -289,14 +304,42 @@ class CryptoScanner {
         const high = Number(candle.high);
         const low = Number(candle.low);
         if (trade.type === 'LONG') {
-          if (high >= trade.takeProfit || low <= trade.stop) {
-            trade.status = 'CLOSED';
+          if (high >= trade.takeProfit) {
+            trade.status = 'CLOSED_TP';
+            trade.closedAt = Date.now();
+            trade.rMultiple = 3.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, true, false);
+            }
+            changed = true;
+            break;
+          } else if (low <= trade.stop) {
+            trade.status = 'CLOSED_SL';
+            trade.closedAt = Date.now();
+            trade.rMultiple = -1.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, false, false);
+            }
             changed = true;
             break;
           }
         } else if (trade.type === 'SHORT') {
-          if (low <= trade.takeProfit || high >= trade.stop) {
-            trade.status = 'CLOSED';
+          if (low <= trade.takeProfit) {
+            trade.status = 'CLOSED_TP';
+            trade.closedAt = Date.now();
+            trade.rMultiple = 3.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, true, false);
+            }
+            changed = true;
+            break;
+          } else if (high >= trade.stop) {
+            trade.status = 'CLOSED_SL';
+            trade.closedAt = Date.now();
+            trade.rMultiple = -1.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, false, false);
+            }
             changed = true;
             break;
           }

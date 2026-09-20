@@ -550,7 +550,7 @@ class TradeTracker {
     }
   }
 
-  recordLearningOutcome(trade, isWin, isStopHunt) {
+  recordLearningOutcome(trade, isWin, isStopHunt = false, extra = {}) {
     const symbol = trade.symbol;
     if (!this.memory[symbol]) {
       this.memory[symbol] = {
@@ -561,36 +561,93 @@ class TradeTracker {
         stopHuntCount: 0,
         atrBufferBonus: 0,
         extraVolumeRequired: 0,
-        quarantineUntil: 0
+        quarantineUntil: 0,
+        lessons: []
       };
     }
 
     const mem = this.memory[symbol];
     mem.totalTrades++;
 
+    let lesson = '';
+    const rMult = trade.rMultiple !== undefined ? trade.rMultiple : (isWin ? 3.0 : -1.0);
+
     if (isWin) {
       mem.wins++;
       mem.consecutiveLosses = 0;
+      // Reducir gradualmente buffers si el mercado responde favorablemente
       if (mem.atrBufferBonus > 0) mem.atrBufferBonus = Math.max(0, mem.atrBufferBonus - 0.05);
       if (mem.extraVolumeRequired > 0) mem.extraVolumeRequired = Math.max(0, mem.extraVolumeRequired - 0.05);
+
+      lesson = `✅ Trade ganador (+${rMult}R). Estructura SMC validada con éxito. Confianza del activo reforzada.`;
     } else {
       mem.losses++;
       mem.consecutiveLosses++;
 
       if (isStopHunt) {
         mem.stopHuntCount++;
-        mem.atrBufferBonus = Math.min(0.50, mem.atrBufferBonus + 0.15);
+        // Si fue cacería de liquidez (mecha), aumentar buffer de holgura para el SL
+        mem.atrBufferBonus = Math.min(0.50, (mem.atrBufferBonus || 0) + 0.15);
+        lesson = `⚠️ Cacería de liquidez detectada (Stop Hunt). Buffer de SL aumentado (+15% ATR) para filtrar mechazos en ${symbol}.`;
+      } else {
+        lesson = `🛑 Stop Loss alcanzado (${rMult}R). Pérdida controlada por gestión de riesgo.`;
       }
 
       if (mem.consecutiveLosses >= 2) {
-        mem.extraVolumeRequired = Math.min(0.40, mem.extraVolumeRequired + 0.15);
+        // Exigir mayor volumen institucional para validar próximas entradas
+        mem.extraVolumeRequired = Math.min(0.40, (mem.extraVolumeRequired || 0) + 0.15);
+        lesson += ` Filtro de volumen aumentado (+15%) por 2 pérdidas consecutivas.`;
+
         if (mem.consecutiveLosses >= 3) {
+          // Poner activo en cuarentena de protección por 3 horas
           mem.quarantineUntil = Date.now() + (3 * 60 * 60 * 1000);
+          lesson += ` 🔒 Activo puesto en Cuarentena de Protección por 3 horas para evitar drawdown.`;
         }
       }
     }
 
+    if (!Array.isArray(mem.lessons)) mem.lessons = [];
+    mem.lessons.unshift({
+      date: Date.now(),
+      isWin,
+      rMultiple: rMult,
+      lesson
+    });
+    if (mem.lessons.length > 20) mem.lessons.pop();
+
+    // Guardar en la lista global de experiencias de trading
+    if (!Array.isArray(this.experiences)) this.experiences = this.loadExperiences();
+    this.experiences.unshift({
+      id: trade.id || `exp_${Date.now()}`,
+      symbol: trade.symbol,
+      type: trade.type,
+      entry: trade.entry,
+      isWin,
+      isStopHunt: Boolean(isStopHunt),
+      rMultiple: rMult,
+      lesson,
+      timestamp: Date.now()
+    });
+    if (this.experiences.length > 100) this.experiences.pop();
+    this.saveExperiences();
+
     this.saveMemory();
+    console.log(`[Adaptive AI] 🧠 Experiencia registrada para ${symbol}:`, lesson);
+  }
+
+  loadExperiences() {
+    try {
+      const data = localStorage.getItem('smc_experiences_v1');
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveExperiences() {
+    try {
+      localStorage.setItem('smc_experiences_v1', JSON.stringify(this.experiences || []));
+    } catch (e) {}
   }
 
   getAdaptiveProfile(symbol) {
@@ -604,23 +661,48 @@ class TradeTracker {
       quarantineUntil: 0
     };
 
-    const isQuarantined = Date.now() < mem.quarantineUntil;
+    const isQuarantined = Date.now() < (mem.quarantineUntil || 0);
     const winRate = mem.totalTrades > 0 ? (mem.wins / mem.totalTrades) * 100 : 50;
 
     return {
       symbol,
       isQuarantined,
+      quarantineUntil: mem.quarantineUntil || 0,
       winRate: Math.round(winRate),
+      totalTrades: mem.totalTrades || 0,
+      wins: mem.wins || 0,
+      losses: mem.losses || 0,
       atrBufferBonus: mem.atrBufferBonus || 0,
       extraVolumeRequired: mem.extraVolumeRequired || 0,
-      consecutiveLosses: mem.consecutiveLosses || 0
+      consecutiveLosses: mem.consecutiveLosses || 0,
+      lessons: mem.lessons || []
     };
+  }
+
+  getLearningReport() {
+    if (!this.experiences) this.experiences = this.loadExperiences();
+    const stats = this.getGlobalStats();
+    const symbolProfiles = Object.keys(this.memory).map(sym => this.getAdaptiveProfile(sym));
+
+    return {
+      stats,
+      experiences: this.experiences || [],
+      symbolProfiles,
+      totalExperiences: (this.experiences || []).length
+    };
+  }
+
+  clearLearningMemory() {
+    this.memory = {};
+    this.experiences = [];
+    this.saveMemory();
+    this.saveExperiences();
   }
 
   getGlobalStats() {
     const closed = this.trades.filter(t => t.status !== 'OPEN' && t.status !== 'TP1_REACHED');
-    const wins = closed.filter(t => t.status === 'WIN_TP3' || t.status === 'WIN_TP1_BE').length;
-    const losses = closed.filter(t => t.status === 'LOSS_SL' || t.status === 'STOP_HUNT_LOSS').length;
+    const wins = closed.filter(t => t.status === 'WIN_TP3' || t.status === 'WIN_TP1_BE' || t.status === 'CLOSED_TP').length;
+    const losses = closed.filter(t => t.status === 'LOSS_SL' || t.status === 'STOP_HUNT_LOSS' || t.status === 'CLOSED_SL').length;
     const total = closed.length;
     const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
 
@@ -1016,7 +1098,14 @@ class SMCDetector {
               if (hasDivergence) score += 15;
               if (btcShield && btcShield.trend === 'ALCISTA') score += 10;
               if (liquidity.hasEQH) score += 10;
-              score = Math.min(100, score);
+
+              // Factor de Autoaprendizaje (Machine Learning adaptativo)
+              if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+                if (adaptiveProfile.winRate >= 70) score += 10; // Bonus por alta fiabilidad demostrada
+                else if (adaptiveProfile.winRate <= 35) score -= 15; // Penalización por racha negativa
+              }
+
+              score = Math.max(10, Math.min(100, score));
 
               const grade = score >= 90 ? 'A+' : (score >= 75 ? 'A' : 'B+');
               const gradeBadge = score >= 90 ? '👑 Grado A+ Institucional' : (score >= 75 ? '🎯 Grado A Alta Probabilidad' : '⚡ Grado B+ Válido');
@@ -1135,7 +1224,14 @@ class SMCDetector {
               if (hasDivergence) score += 15;
               if (btcShield && btcShield.trend === 'BAJISTA') score += 10;
               if (liquidity.hasEQL) score += 10;
-              score = Math.min(100, score);
+
+              // Factor de Autoaprendizaje (Machine Learning adaptativo)
+              if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+                if (adaptiveProfile.winRate >= 70) score += 10; // Bonus por alta fiabilidad demostrada
+                else if (adaptiveProfile.winRate <= 35) score -= 15; // Penalización por racha negativa
+              }
+
+              score = Math.max(10, Math.min(100, score));
 
               const grade = score >= 90 ? 'A+' : (score >= 75 ? 'A' : 'B+');
               const gradeBadge = score >= 90 ? '👑 Grado A+ Institucional' : (score >= 75 ? '🎯 Grado A Alta Probabilidad' : '⚡ Grado B+ Válido');
@@ -1213,8 +1309,11 @@ class SMCDetector {
           ];
           if (setup.hasDivergence) tags.push('⚡ Divergencia RSI Alcista');
           if (setup.hasLiquidityTarget) tags.push('🌊 Target: Piscina EQH');
-          if (setup.btcShieldBadge) tags.push(setup.btcShieldBadge);
           if (setup.adaptiveBadge) tags.push(setup.adaptiveBadge);
+          if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+            if (adaptiveProfile.winRate >= 70) tags.push(`🧠 IA: Alta Fiabilidad (${adaptiveProfile.winRate}% WR)`);
+            if (adaptiveProfile.consecutiveLosses >= 1) tags.push(`🛡️ IA: Filtro Vol (+${Math.round((adaptiveProfile.extraVolumeRequired || 0) * 100)}%)`);
+          }
 
           activeSignal = {
             id: setup.id,
@@ -1265,8 +1364,11 @@ class SMCDetector {
           ];
           if (setup.hasDivergence) tags.push('⚡ Divergencia RSI Bajista');
           if (setup.hasLiquidityTarget) tags.push('🌊 Target: Piscina EQL');
-          if (setup.btcShieldBadge) tags.push(setup.btcShieldBadge);
           if (setup.adaptiveBadge) tags.push(setup.adaptiveBadge);
+          if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+            if (adaptiveProfile.winRate >= 70) tags.push(`🧠 IA: Alta Fiabilidad (${adaptiveProfile.winRate}% WR)`);
+            if (adaptiveProfile.consecutiveLosses >= 1) tags.push(`🛡️ IA: Filtro Vol (+${Math.round((adaptiveProfile.extraVolumeRequired || 0) * 100)}%)`);
+          }
 
           activeSignal = {
             id: setup.id,
@@ -1570,24 +1672,39 @@ class CryptoScanner {
 
   hasUserOpenTrade(symbol) {
     if (!symbol) return false;
-    return this.userExecutedTrades.some(t => t.symbol === symbol && t.status === 'OPEN');
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return this.userExecutedTrades.some(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    });
   }
 
   getUserOpenTrade(symbol) {
     if (!symbol) return null;
-    return this.userExecutedTrades.find(t => t.symbol === symbol && t.status === 'OPEN') || null;
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return this.userExecutedTrades.find(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    }) || null;
   }
 
   isSignalExecutedOrDismissed(signalId, symbol = '') {
     if (signalId && this.dismissedSignals.has(signalId)) return true;
     if (symbol && this.hasUserOpenTrade(symbol)) return true;
-    if (signalId && this.userExecutedTrades.some(t => t.id === signalId && t.status === 'OPEN')) return true;
+    if (signalId) {
+      const target = this.userExecutedTrades.find(t => t.id === signalId);
+      if (target && target.status === 'OPEN') return true;
+    }
     return false;
   }
 
   updateUserExecutedTrades(symbol, candles15m) {
     if (!Array.isArray(candles15m) || candles15m.length === 0) return;
-    const openTrades = this.userExecutedTrades.filter(t => t.symbol === symbol && t.status === 'OPEN');
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const openTrades = this.userExecutedTrades.filter(t => {
+      const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      return cleanT === cleanTarget && t.status === 'OPEN';
+    });
     if (openTrades.length === 0) return;
 
     let changed = false;
@@ -1597,14 +1714,42 @@ class CryptoScanner {
         const high = Number(candle.high);
         const low = Number(candle.low);
         if (trade.type === 'LONG') {
-          if (high >= trade.takeProfit || low <= trade.stop) {
-            trade.status = 'CLOSED';
+          if (high >= trade.takeProfit) {
+            trade.status = 'CLOSED_TP';
+            trade.closedAt = Date.now();
+            trade.rMultiple = 3.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, true, false);
+            }
+            changed = true;
+            break;
+          } else if (low <= trade.stop) {
+            trade.status = 'CLOSED_SL';
+            trade.closedAt = Date.now();
+            trade.rMultiple = -1.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, false, false);
+            }
             changed = true;
             break;
           }
         } else if (trade.type === 'SHORT') {
-          if (low <= trade.takeProfit || high >= trade.stop) {
-            trade.status = 'CLOSED';
+          if (low <= trade.takeProfit) {
+            trade.status = 'CLOSED_TP';
+            trade.closedAt = Date.now();
+            trade.rMultiple = 3.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, true, false);
+            }
+            changed = true;
+            break;
+          } else if (high >= trade.stop) {
+            trade.status = 'CLOSED_SL';
+            trade.closedAt = Date.now();
+            trade.rMultiple = -1.0;
+            if (this.tracker) {
+              this.tracker.recordLearningOutcome(trade, false, false);
+            }
             changed = true;
             break;
           }
@@ -2920,6 +3065,35 @@ function initApp() {
   // Mapa de Posiciones en Tiempo Real de Binance Futuros
   let binancePositionsMap = {};
 
+  // Función Institucional: Verifica si un par ya tiene una operación abierta activa
+  // Comprueba scanner.userExecutedTrades, binancePositionsMap (Binance API real) y tradeTracker
+  function isCryptoOperationActive(symbol) {
+    if (!symbol) return false;
+    const cleanTarget = String(symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+    // 1. Verificar en trades abiertos del scanner
+    if (scanner && scanner.hasUserOpenTrade(cleanTarget)) return true;
+
+    // 2. Verificar en posiciones reales abiertas en Binance Futuros
+    if (binancePositionsMap && binancePositionsMap[cleanTarget]) {
+      const pos = binancePositionsMap[cleanTarget];
+      if (pos && Math.abs(Number(pos.amount || pos.positionAmt || 0)) > 0) {
+        return true;
+      }
+    }
+
+    // 3. Verificar en tradeTracker (órdenes en seguimiento OPEN o TP1_REACHED)
+    if (tradeTracker && Array.isArray(tradeTracker.trades)) {
+      const openInTracker = tradeTracker.trades.some(t => {
+        const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        return cleanT === cleanTarget && (t.status === 'OPEN' || t.status === 'TP1_REACHED');
+      });
+      if (openInTracker) return true;
+    }
+
+    return false;
+  }
+
   async function syncBinancePositions() {
     if (!binanceTrade || !binanceTrade.isConfigured() || !scanner) return;
     try {
@@ -2927,25 +3101,64 @@ function initApp() {
       if (Array.isArray(positions)) {
         const newMap = {};
         positions.forEach(p => {
-          newMap[p.symbol] = p;
+          if (Math.abs(Number(p.amount || p.positionAmt || 0)) > 0) {
+            newMap[p.symbol] = p;
+          }
         });
+
+        const prevMap = binancePositionsMap;
         binancePositionsMap = newMap;
+
+        // Detectar si alguna posición que estaba en curso se cerró en Binance (tocó SL o TP)
+        if (prevMap && Object.keys(prevMap).length > 0) {
+          Object.keys(prevMap).forEach(cleanSym => {
+            if (!newMap[cleanSym] && prevMap[cleanSym] && Math.abs(Number(prevMap[cleanSym].amount || 0)) > 0) {
+              console.log(`[Binance Sync] 🏁 Posición cerrada en Binance para ${cleanSym} (Tocó TP o SL)`);
+              
+              const targetTrade = scanner.userExecutedTrades?.find(t => {
+                const cleanT = String(t.symbol).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                return cleanT === cleanSym && t.status === 'OPEN';
+              });
+
+              if (targetTrade) {
+                const lastRes = scanner.results.get(targetTrade.symbol) || scanner.results.get(cleanSym);
+                const currentP = lastRes ? Number(lastRes.price) : Number(targetTrade.entry);
+                const isLong = targetTrade.type === 'LONG';
+                const isWin = isLong ? (currentP >= Number(targetTrade.entry)) : (currentP <= Number(targetTrade.entry));
+
+                targetTrade.status = isWin ? 'CLOSED_TP' : 'CLOSED_SL';
+                targetTrade.closedAt = Date.now();
+                targetTrade.rMultiple = isWin ? 3.0 : -1.0;
+                scanner.saveUserExecutedTrades();
+
+                // Registrar el resultado en la memoria del motor de autoaprendizaje
+                if (tradeTracker) {
+                  tradeTracker.recordLearningOutcome(targetTrade, isWin, false);
+                }
+
+                showToast(`🏁 Operación en ${cleanSym} finalizada en Binance (${isWin ? '✅ TP Ganancia' : '🛑 SL Pérdida'}). Experiencia registrada en IA.`, isWin ? 'success' : 'info');
+              }
+            }
+          });
+        }
 
         // Auto-sincronizar posiciones existentes de Binance con el scanner
         positions.forEach(p => {
-          const fmtSymbol = p.symbol.endsWith('USDT') ? `${p.symbol.replace('USDT', '')}/USDT` : p.symbol;
-          if (scanner && !scanner.hasUserOpenTrade(fmtSymbol)) {
-            scanner.addUserExecutedTrade({
-              id: `binance_${p.symbol}`,
-              symbol: fmtSymbol,
-              type: p.side,
-              entry: p.entryPrice,
-              stop: 0,
-              takeProfit: 0
-            }, {
-              quantity: p.amount,
-              leverage: p.leverage
-            });
+          if (Math.abs(Number(p.amount || p.positionAmt || 0)) > 0) {
+            const fmtSymbol = p.symbol.endsWith('USDT') ? `${p.symbol.replace('USDT', '')}/USDT` : p.symbol;
+            if (scanner && !scanner.hasUserOpenTrade(fmtSymbol)) {
+              scanner.addUserExecutedTrade({
+                id: `binance_${p.symbol}`,
+                symbol: fmtSymbol,
+                type: p.side,
+                entry: p.entryPrice,
+                stop: 0,
+                takeProfit: 0
+              }, {
+                quantity: p.amount,
+                leverage: p.leverage
+              });
+            }
           }
         });
       }
@@ -3424,9 +3637,9 @@ function initApp() {
 
     const cleanPair = signal.symbol.replace('/', '').toUpperCase();
 
-    // 1. Evitar órdenes duplicadas si ya hay un trade abierto en este símbolo
-    if (scanner.hasUserOpenTrade(signal.symbol)) {
-      console.log(`[Auto-Trading] Ignorado: Ya existe una operación en curso para ${cleanPair}`);
+    // 1. REGLA ESTRICTA: Si este criptoactivo ya tiene una operación activa (en scanner, Binance o tracker), NO ejecutar hasta que toque SL o TP
+    if (isCryptoOperationActive(signal.symbol)) {
+      console.log(`[Auto-Trading] 🛑 Operación en curso para ${cleanPair}. El bot no ejecutará hasta que toque SL o TP.`);
       return;
     }
 
@@ -3512,6 +3725,105 @@ function initApp() {
     }
   }
 
+  function renderAILearningModal() {
+    const report = tradeTracker.getLearningReport();
+    const stats = report.stats;
+
+    // Actualizar KPIs superiores del modal
+    const elWinrate = document.getElementById('ai-modal-winrate');
+    const elCounts = document.getElementById('ai-modal-counts');
+    const elExperiences = document.getElementById('ai-modal-experiences');
+    const elNetR = document.getElementById('ai-modal-net-r');
+
+    if (elWinrate) elWinrate.textContent = stats.winRate;
+    if (elCounts) elCounts.textContent = `${stats.wins}W / ${stats.losses}L (${stats.totalTrades} cerrados)`;
+    if (elExperiences) elExperiences.textContent = report.totalExperiences;
+    if (elNetR) elNetR.textContent = stats.netR;
+
+    // Actualizar Perfiles Adaptados por Activo
+    const listProfiles = document.getElementById('ai-profiles-list');
+    const countProfiles = document.getElementById('ai-active-profiles-count');
+
+    if (countProfiles) {
+      countProfiles.textContent = `${report.symbolProfiles.length} activos con memoria`;
+    }
+
+    if (listProfiles) {
+      if (report.symbolProfiles.length === 0) {
+        listProfiles.innerHTML = `
+          <div class="text-center py-4 text-gray-500 text-xs">
+            Aún no hay perfiles adaptados. El bot registrará automáticamente la memoria al cerrar cada trade.
+          </div>
+        `;
+      } else {
+        listProfiles.innerHTML = '';
+        report.symbolProfiles.forEach(prof => {
+          const row = document.createElement('div');
+          row.className = 'bg-bgSubcard p-2.5 rounded-xl border border-borderSubtle flex items-center justify-between text-xs gap-2';
+
+          const isQuarantined = prof.isQuarantined;
+          let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">🟢 Óptimo</span>`;
+          if (isQuarantined) {
+            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 animate-pulse">🔒 Cuarentena</span>`;
+          } else if (prof.atrBufferBonus > 0 || prof.extraVolumeRequired > 0) {
+            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">🛡️ Protegido</span>`;
+          }
+
+          row.innerHTML = `
+            <div>
+              <div class="font-extrabold text-white text-xs flex items-center gap-1.5">
+                <span>${prof.symbol}</span>
+                <span class="text-[10px] font-mono font-bold text-gray-400">(${prof.wins}W / ${prof.losses}L)</span>
+              </div>
+              <div class="text-[10px] text-gray-400 mt-0.5">
+                ${prof.atrBufferBonus > 0 ? `+${Math.round(prof.atrBufferBonus * 100)}% Holgura SL · ` : ''}
+                ${prof.extraVolumeRequired > 0 ? `+${Math.round(prof.extraVolumeRequired * 100)}% Vol. req. · ` : ''}
+                Win Rate: <strong class="${prof.winRate >= 60 ? 'text-emerald-400' : 'text-gray-300'}">${prof.winRate}%</strong>
+              </div>
+            </div>
+            <div>${statusBadge}</div>
+          `;
+          listProfiles.appendChild(row);
+        });
+      }
+    }
+
+    // Actualizar Lista de Experiencias y Lecciones
+    const listExp = document.getElementById('ai-experiences-list');
+    const countExp = document.getElementById('ai-experiences-count');
+    if (countExp) {
+      countExp.textContent = `${report.experiences.length} experiencias`;
+    }
+
+    if (listExp) {
+      if (report.experiences.length === 0) {
+        listExp.innerHTML = `
+          <div class="text-center py-4 text-gray-500 text-xs">
+            Esperando resultados de trades para registrar aprendizajes...
+          </div>
+        `;
+      } else {
+        listExp.innerHTML = '';
+        report.experiences.slice(0, 30).forEach(exp => {
+          const item = document.createElement('div');
+          const isWin = exp.isWin;
+          item.className = `p-2.5 rounded-xl border text-[11px] leading-snug ${
+            isWin ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200' : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
+          }`;
+          const dateStr = new Date(exp.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          item.innerHTML = `
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-extrabold text-white text-xs">${exp.symbol} (${exp.type})</span>
+              <span class="font-mono text-[10px] opacity-75">${dateStr} · <strong>${exp.rMultiple >= 0 ? '+' : ''}${exp.rMultiple}R</strong></span>
+            </div>
+            <div class="text-[10px] text-gray-300">${exp.lesson}</div>
+          `;
+          listExp.appendChild(item);
+        });
+      }
+    }
+  }
+
   function renderApp(results) {
     const timeEl = document.getElementById('last-scan-time');
     if (timeEl) {
@@ -3527,6 +3839,17 @@ function initApp() {
     if (elWinRate) elWinRate.textContent = trackerStats.totalTrades > 0 ? trackerStats.winRate : '100%';
     if (elTotalTrades) elTotalTrades.textContent = `${trackerStats.totalTrades} (${trackerStats.wins}W / ${trackerStats.losses}L)`;
     if (elNetR) elNetR.textContent = `${trackerStats.netR} Ganancia`;
+
+    // Actualizar indicador en vivo del motor de IA
+    const elAiWinrate = document.getElementById('ai-stat-winrate');
+    const elAiSummary = document.getElementById('ai-quick-summary');
+    if (elAiWinrate) {
+      elAiWinrate.textContent = trackerStats.totalTrades > 0 ? trackerStats.winRate : '100% WR';
+    }
+    if (elAiSummary) {
+      const expCount = (tradeTracker.experiences || tradeTracker.loadExperiences()).length;
+      elAiSummary.textContent = `${expCount} experiencias aprendidas · Optimizando Win Rate en vivo`;
+    }
 
     const activeSignals = scanner.getActiveSignals();
     
@@ -4074,6 +4397,36 @@ function initApp() {
       showToast('🔐 Claves API de Binance guardadas con éxito', 'success');
     });
 
+    // ─── Modal de Autoaprendizaje SMC (Adaptive AI) ───
+    const aiModal = document.getElementById('modal-ai-learning');
+    const btnOpenAI = document.getElementById('btn-open-ai');
+    const btnOpenAISummary = document.getElementById('btn-open-ai-summary');
+    const btnCloseAI = document.getElementById('btn-close-ai-modal');
+    const btnCloseAI2 = document.getElementById('btn-close-ai-modal-2');
+    const btnResetAIMemory = document.getElementById('btn-reset-ai-memory');
+
+    function openAIModal() {
+      renderAILearningModal();
+      aiModal?.classList.remove('hidden');
+    }
+
+    btnOpenAI?.addEventListener('click', openAIModal);
+    btnOpenAISummary?.addEventListener('click', openAIModal);
+    btnCloseAI?.addEventListener('click', () => aiModal?.classList.add('hidden'));
+    btnCloseAI2?.addEventListener('click', () => aiModal?.classList.add('hidden'));
+    aiModal?.addEventListener('click', (e) => {
+      if (e.target === aiModal) aiModal.classList.add('hidden');
+    });
+
+    btnResetAIMemory?.addEventListener('click', () => {
+      if (confirm('¿Deseas reiniciar la memoria del motor de autoaprendizaje? El bot comenzará a registrar aprendizajes desde cero.')) {
+        tradeTracker.clearLearningMemory();
+        renderAILearningModal();
+        renderApp(scanner.getAllResults());
+        showToast('🧠 Memoria de autoaprendizaje reiniciada con éxito', 'info');
+      }
+    });
+
     // ─── Transferencia Instantánea de Claves por Código QR (PC ↔ Móvil) ───
     const modalQRExport = document.getElementById('modal-qr-export');
     const modalQRScan = document.getElementById('modal-qr-scan');
@@ -4573,6 +4926,12 @@ function initApp() {
       return;
     }
 
+    // Regla Estricta: Si este criptoactivo ya tiene una operación activa, no permitir nueva orden hasta que toque SL o TP
+    if (isCryptoOperationActive(signal.symbol)) {
+      showToast(`🛑 ${signal.symbol} ya tiene una operación activa en curso. Espera a que toque SL o TP antes de nueva entrada.`, 'warning');
+      return;
+    }
+
     pendingTradeSignal = { ...signal };
     const pos = calculatePosition(signal.entry, signal.riskPercent);
 
@@ -4704,6 +5063,13 @@ function initApp() {
 
   document.getElementById('btn-confirm-trade')?.addEventListener('click', async () => {
     if (!pendingTradeSignal) return;
+
+    if (isCryptoOperationActive(pendingTradeSignal.symbol)) {
+      showToast(`🛑 ${pendingTradeSignal.symbol} ya tiene una operación activa. Espera a que toque SL o TP.`, 'warning');
+      document.getElementById('modal-confirm-trade')?.classList.add('hidden');
+      pendingTradeSignal = null;
+      return;
+    }
 
     const targetSignal = { ...pendingTradeSignal };
     const confirmBtn = document.getElementById('btn-confirm-trade');

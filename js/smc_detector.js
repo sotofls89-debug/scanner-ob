@@ -373,7 +373,14 @@ class SMCDetector {
               if (hasDivergence) score += 15;
               if (btcShield && btcShield.trend === 'ALCISTA') score += 10;
               if (liquidity.hasEQH) score += 10;
-              score = Math.min(100, score);
+
+              // Factor de Autoaprendizaje (Machine Learning adaptativo)
+              if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+                if (adaptiveProfile.winRate >= 70) score += 10; // Bonus por alta fiabilidad demostrada
+                else if (adaptiveProfile.winRate <= 35) score -= 15; // Penalización por racha negativa
+              }
+
+              score = Math.max(10, Math.min(100, score));
 
               const grade = score >= 90 ? 'A+' : (score >= 75 ? 'A' : 'B+');
               const gradeBadge = score >= 90 ? '👑 Grado A+ Institucional' : (score >= 75 ? '🎯 Grado A Alta Probabilidad' : '⚡ Grado B+ Válido');
@@ -492,7 +499,14 @@ class SMCDetector {
               if (hasDivergence) score += 15;
               if (btcShield && btcShield.trend === 'BAJISTA') score += 10;
               if (liquidity.hasEQL) score += 10;
-              score = Math.min(100, score);
+
+              // Factor de Autoaprendizaje (Machine Learning adaptativo)
+              if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+                if (adaptiveProfile.winRate >= 70) score += 10; // Bonus por alta fiabilidad demostrada
+                else if (adaptiveProfile.winRate <= 35) score -= 15; // Penalización por racha negativa
+              }
+
+              score = Math.max(10, Math.min(100, score));
 
               const grade = score >= 90 ? 'A+' : (score >= 75 ? 'A' : 'B+');
               const gradeBadge = score >= 90 ? '👑 Grado A+ Institucional' : (score >= 75 ? '🎯 Grado A Alta Probabilidad' : '⚡ Grado B+ Válido');
@@ -570,8 +584,11 @@ class SMCDetector {
           ];
           if (setup.hasDivergence) tags.push('⚡ Divergencia RSI Alcista');
           if (setup.hasLiquidityTarget) tags.push('🌊 Target: Piscina EQH');
-          if (setup.btcShieldBadge) tags.push(setup.btcShieldBadge);
           if (setup.adaptiveBadge) tags.push(setup.adaptiveBadge);
+          if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+            if (adaptiveProfile.winRate >= 70) tags.push(`🧠 IA: Alta Fiabilidad (${adaptiveProfile.winRate}% WR)`);
+            if (adaptiveProfile.consecutiveLosses >= 1) tags.push(`🛡️ IA: Filtro Vol (+${Math.round((adaptiveProfile.extraVolumeRequired || 0) * 100)}%)`);
+          }
 
           activeSignal = {
             id: setup.id,
@@ -622,8 +639,11 @@ class SMCDetector {
           ];
           if (setup.hasDivergence) tags.push('⚡ Divergencia RSI Bajista');
           if (setup.hasLiquidityTarget) tags.push('🌊 Target: Piscina EQL');
-          if (setup.btcShieldBadge) tags.push(setup.btcShieldBadge);
           if (setup.adaptiveBadge) tags.push(setup.adaptiveBadge);
+          if (adaptiveProfile && adaptiveProfile.totalTrades >= 2) {
+            if (adaptiveProfile.winRate >= 70) tags.push(`🧠 IA: Alta Fiabilidad (${adaptiveProfile.winRate}% WR)`);
+            if (adaptiveProfile.consecutiveLosses >= 1) tags.push(`🛡️ IA: Filtro Vol (+${Math.round((adaptiveProfile.extraVolumeRequired || 0) * 100)}%)`);
+          }
 
           activeSignal = {
             id: setup.id,

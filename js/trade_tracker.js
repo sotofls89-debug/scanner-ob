@@ -225,7 +225,7 @@ class TradeTracker {
     }
   }
 
-  recordLearningOutcome(trade, isWin, isStopHunt) {
+  recordLearningOutcome(trade, isWin, isStopHunt = false, extra = {}) {
     const symbol = trade.symbol;
     if (!this.memory[symbol]) {
       this.memory[symbol] = {
@@ -236,36 +236,93 @@ class TradeTracker {
         stopHuntCount: 0,
         atrBufferBonus: 0,
         extraVolumeRequired: 0,
-        quarantineUntil: 0
+        quarantineUntil: 0,
+        lessons: []
       };
     }
 
     const mem = this.memory[symbol];
     mem.totalTrades++;
 
+    let lesson = '';
+    const rMult = trade.rMultiple !== undefined ? trade.rMultiple : (isWin ? 3.0 : -1.0);
+
     if (isWin) {
       mem.wins++;
       mem.consecutiveLosses = 0;
+      // Reducir gradualmente buffers si el mercado responde favorablemente
       if (mem.atrBufferBonus > 0) mem.atrBufferBonus = Math.max(0, mem.atrBufferBonus - 0.05);
       if (mem.extraVolumeRequired > 0) mem.extraVolumeRequired = Math.max(0, mem.extraVolumeRequired - 0.05);
+
+      lesson = `✅ Trade ganador (+${rMult}R). Estructura SMC validada con éxito. Confianza del activo reforzada.`;
     } else {
       mem.losses++;
       mem.consecutiveLosses++;
 
       if (isStopHunt) {
         mem.stopHuntCount++;
-        mem.atrBufferBonus = Math.min(0.50, mem.atrBufferBonus + 0.15);
+        // Si fue cacería de liquidez (mecha), aumentar buffer de holgura para el SL
+        mem.atrBufferBonus = Math.min(0.50, (mem.atrBufferBonus || 0) + 0.15);
+        lesson = `⚠️ Cacería de liquidez detectada (Stop Hunt). Buffer de SL aumentado (+15% ATR) para filtrar mechazos en ${symbol}.`;
+      } else {
+        lesson = `🛑 Stop Loss alcanzado (${rMult}R). Pérdida controlada por gestión de riesgo.`;
       }
 
       if (mem.consecutiveLosses >= 2) {
-        mem.extraVolumeRequired = Math.min(0.40, mem.extraVolumeRequired + 0.15);
+        // Exigir mayor volumen institucional para validar próximas entradas
+        mem.extraVolumeRequired = Math.min(0.40, (mem.extraVolumeRequired || 0) + 0.15);
+        lesson += ` Filtro de volumen aumentado (+15%) por 2 pérdidas consecutivas.`;
+
         if (mem.consecutiveLosses >= 3) {
+          // Poner activo en cuarentena de protección por 3 horas
           mem.quarantineUntil = Date.now() + (3 * 60 * 60 * 1000);
+          lesson += ` 🔒 Activo puesto en Cuarentena de Protección por 3 horas para evitar drawdown.`;
         }
       }
     }
 
+    if (!Array.isArray(mem.lessons)) mem.lessons = [];
+    mem.lessons.unshift({
+      date: Date.now(),
+      isWin,
+      rMultiple: rMult,
+      lesson
+    });
+    if (mem.lessons.length > 20) mem.lessons.pop();
+
+    // Guardar en la lista global de experiencias de trading
+    if (!Array.isArray(this.experiences)) this.experiences = this.loadExperiences();
+    this.experiences.unshift({
+      id: trade.id || `exp_${Date.now()}`,
+      symbol: trade.symbol,
+      type: trade.type,
+      entry: trade.entry,
+      isWin,
+      isStopHunt: Boolean(isStopHunt),
+      rMultiple: rMult,
+      lesson,
+      timestamp: Date.now()
+    });
+    if (this.experiences.length > 100) this.experiences.pop();
+    this.saveExperiences();
+
     this.saveMemory();
+    console.log(`[Adaptive AI] 🧠 Experiencia registrada para ${symbol}:`, lesson);
+  }
+
+  loadExperiences() {
+    try {
+      const data = localStorage.getItem('smc_experiences_v1');
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  saveExperiences() {
+    try {
+      localStorage.setItem('smc_experiences_v1', JSON.stringify(this.experiences || []));
+    } catch (e) {}
   }
 
   getAdaptiveProfile(symbol) {
@@ -279,23 +336,48 @@ class TradeTracker {
       quarantineUntil: 0
     };
 
-    const isQuarantined = Date.now() < mem.quarantineUntil;
+    const isQuarantined = Date.now() < (mem.quarantineUntil || 0);
     const winRate = mem.totalTrades > 0 ? (mem.wins / mem.totalTrades) * 100 : 50;
 
     return {
       symbol,
       isQuarantined,
+      quarantineUntil: mem.quarantineUntil || 0,
       winRate: Math.round(winRate),
+      totalTrades: mem.totalTrades || 0,
+      wins: mem.wins || 0,
+      losses: mem.losses || 0,
       atrBufferBonus: mem.atrBufferBonus || 0,
       extraVolumeRequired: mem.extraVolumeRequired || 0,
-      consecutiveLosses: mem.consecutiveLosses || 0
+      consecutiveLosses: mem.consecutiveLosses || 0,
+      lessons: mem.lessons || []
     };
+  }
+
+  getLearningReport() {
+    if (!this.experiences) this.experiences = this.loadExperiences();
+    const stats = this.getGlobalStats();
+    const symbolProfiles = Object.keys(this.memory).map(sym => this.getAdaptiveProfile(sym));
+
+    return {
+      stats,
+      experiences: this.experiences || [],
+      symbolProfiles,
+      totalExperiences: (this.experiences || []).length
+    };
+  }
+
+  clearLearningMemory() {
+    this.memory = {};
+    this.experiences = [];
+    this.saveMemory();
+    this.saveExperiences();
   }
 
   getGlobalStats() {
     const closed = this.trades.filter(t => t.status !== 'OPEN' && t.status !== 'TP1_REACHED');
-    const wins = closed.filter(t => t.status === 'WIN_TP3' || t.status === 'WIN_TP1_BE').length;
-    const losses = closed.filter(t => t.status === 'LOSS_SL' || t.status === 'STOP_HUNT_LOSS').length;
+    const wins = closed.filter(t => t.status === 'WIN_TP3' || t.status === 'WIN_TP1_BE' || t.status === 'CLOSED_TP').length;
+    const losses = closed.filter(t => t.status === 'LOSS_SL' || t.status === 'STOP_HUNT_LOSS' || t.status === 'CLOSED_SL').length;
     const total = closed.length;
     const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
 
