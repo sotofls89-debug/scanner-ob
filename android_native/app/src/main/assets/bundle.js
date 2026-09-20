@@ -1,879 +1,3 @@
-<!DOCTYPE html>
-<html lang="es" class="dark">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Order Block Signals - Binance & Discord</title>
-  
-  <!-- PWA: Manifest + iOS meta tags -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="SMC Bot">
-  <meta name="theme-color" content="#0b0f1a">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            bgDark: '#080c14',
-            bgCard: '#0d131f',
-            bgSubcard: '#131b2c',
-            borderSubtle: '#1c273c',
-            accentGold: '#f59e0b',
-            accentGreen: '#10b981',
-            accentRed: '#ef4444',
-            discordBlurple: '#5865F2'
-          }
-        }
-      }
-    }
-  </script>
-
-  <style>
-/* INLINED_STYLES */
-/* Estilos exactos basados en la interfaz de señales SMC */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap');
-
-:root {
-  --bg-dark: #080c14;
-  --bg-card: #0d131f;
-  --bg-subcard: #131b2c;
-  --border-subtle: #1c273c;
-  --gold-accent: #f59e0b;
-  --gold-bg: rgba(245, 158, 11, 0.08);
-  --gold-border: rgba(245, 158, 11, 0.3);
-  --green-accent: #10b981;
-  --red-accent: #ef4444;
-  --cyan-accent: #06b6d4;
-  --text-white: #f8fafc;
-  --text-muted: #94a3b8;
-}
-
-html, body {
-  overflow-x: hidden !important;
-  max-width: 100vw !important;
-  width: 100% !important;
-  margin: 0 !important;
-  padding: 10px 8px !important;
-  box-sizing: border-box !important;
-  touch-action: pan-y !important;
-  -webkit-overflow-scrolling: touch;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  max-width: 100%;
-}
-
-body {
-  background-color: var(--bg-dark);
-  color: var(--text-white);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-}
-
-.app-container {
-  width: 100% !important;
-  max-width: 960px;
-  overflow-x: hidden !important;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: 0 auto;
-}
-
-/* Card base */
-.card-box {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-}
-
-/* Custom Alert Card */
-.alert-card-gold {
-  background: var(--gold-bg);
-  border: 1px solid var(--gold-border);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-/* Clickable Copy Pill values inside signal cards */
-.metric-pill-copy {
-  background: var(--bg-subcard);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 8px 10px;
-  text-align: center;
-  flex: 1;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  position: relative;
-}
-
-.metric-pill-copy:hover {
-  background: #1c273e;
-  border-color: #3b82f6;
-  transform: translateY(-1px);
-}
-
-.metric-pill-copy:active {
-  transform: scale(0.96);
-}
-
-.tag-pill {
-  background: rgba(245, 158, 11, 0.07);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  color: #fcd34d;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-
-/* Power button */
-.power-btn-active {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-}
-
-.power-btn-inactive {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-/* Table styles */
-.crypto-table-row {
-  border-bottom: 1px solid #141c2c;
-  transition: background 0.15s ease;
-}
-
-.crypto-table-row:hover {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.crypto-table-row:last-child {
-  border-bottom: none;
-}
-
-/* Toast */
-#toast-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 9999;
-}
-
-/* QR Scanner estrictamente cuadrado */
-#qr-reader-container {
-  width: 260px !important;
-  height: 260px !important;
-  max-width: 100%;
-  aspect-ratio: 1 / 1 !important;
-  border-radius: 16px;
-  overflow: hidden;
-  margin: 0 auto;
-  position: relative;
-  background: #000;
-}
-
-#qr-reader {
-  width: 100% !important;
-  height: 100% !important;
-  border: none !important;
-}
-
-#qr-reader video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  border-radius: 16px !important;
-}
-
-#qr-reader__scan_region {
-  background: transparent !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-#qr-reader__dashboard {
-  display: none !important;
-}
-
-
-</style>
-  <link rel="stylesheet" href="styles.css?v=20260920-1008">
-</head>
-<body class="bg-bgDark text-white select-none min-h-screen flex justify-center py-4 px-3 sm:px-6">
-
-  <div class="app-container w-full max-w-xl md:max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-4">
-
-    <!-- BANNER DE ACTUALIZACIÓN AUTOMÁTICA (oculto por defecto) -->
-    <div id="update-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-amber-500 text-black text-xs font-bold px-4 py-2.5 flex items-center justify-between shadow-lg">
-      <div class="flex items-center gap-2">
-        <span class="animate-spin">🔄</span>
-        <span>Nueva versión disponible</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <button id="btn-update-now" class="bg-black text-amber-400 px-3 py-1 rounded-lg text-xs font-black active:scale-95">Actualizar Ya</button>
-        <button onclick="document.getElementById('update-banner').classList.add('hidden')" class="text-black font-bold px-1.5 py-0.5 hover:bg-black/20 rounded">✕</button>
-      </div>
-    </div>
-
-    <!-- BANNER DE ANÁLISIS PAUSADO (se muestra cuando la app pasa a segundo plano) -->
-    <div id="pause-banner" class="hidden fixed top-0 left-0 right-0 z-40 bg-gray-900/95 border-b border-rose-500/40 text-rose-300 text-xs font-bold px-4 py-2 flex items-center gap-2 shadow-lg">
-      <span class="animate-pulse">⏸</span>
-      <span>Análisis pausado — abre la app para reanudar el escáner en tiempo real</span>
-    </div>
-
-    <!-- HEADER AJUSTADO A PANTALLA MÓVIL (SOLO SCROLL VERTICAL) -->
-    <header class="w-full flex items-center justify-between gap-2 pt-1 pb-1">
-      <div class="min-w-0 flex-1">
-        <h1 class="text-base sm:text-lg font-black text-white tracking-tight truncate">Order Block Signals</h1>
-        <p class="text-[11px] text-gray-400">Velas 15m · RR 1:3 · En Vivo</p>
-      </div>
-
-      <div class="flex items-center gap-1.5 shrink-0">
-        <!-- Toggle Demo / Real -->
-        <button id="btn-mode-toggle" title="Cambiar entre modo Demo y Real"
-          class="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-black border transition-all active:scale-95 bg-yellow-500/15 border-yellow-500/40 text-yellow-300">
-          <span id="mode-icon">🟡</span>
-          <span id="mode-label">DEMO</span>
-        </button>
-
-        <!-- Botón API Keys -->
-        <button id="btn-open-api" title="Configurar API Keys de Binance"
-          class="bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition-all shadow-md active:scale-95">
-          <span>🔑</span> API
-        </button>
-
-        <!-- Botón Sincronización en la Nube -->
-        <button id="btn-open-sync" title="Sincronizar Win Rate y Trades entre PC y Móvil"
-          class="bg-cyan-600/20 hover:bg-cyan-600/40 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition-all shadow-md active:scale-95">
-          <span>☁️</span> Sync
-        </button>
-      </div>
-    </header>
-
-    <!-- MERCADO Y HORARIO DE OPERACIÓN -->
-    <div class="card-box p-3.5 flex flex-col gap-2.5 text-xs">
-
-      <!-- Fila superior: Mercado + Sesión Activa -->
-      <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5">
-          <span class="text-xl">🌐</span>
-          <div>
-            <div class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Mercado</div>
-            <div class="font-black text-white text-xs mt-0.5">Binance USDT-M Futuros</div>
-            <div class="text-[10px] text-amber-400 font-semibold mt-0.5">Perpetual · 15 Activos · 15m / 4H</div>
-          </div>
-        </div>
-        <!-- Badge de sesión activa en tiempo real -->
-        <div class="flex flex-col items-end gap-1">
-          <div class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Sesión Activa Ahora</div>
-          <div id="session-name" class="px-3 py-1 rounded-lg font-extrabold text-xs flex items-center gap-1.5">...</div>
-          <div class="font-mono text-[10px] text-gray-400" id="local-clock">--:--:--</div>
-        </div>
-      </div>
-
-      <!-- Fila inferior: Las 3 sesiones con indicador de cuál está activa -->
-      <div class="grid grid-cols-3 gap-2 pt-2 border-t border-gray-700/60">
-        <div id="sz-london" class="rounded-lg px-2 py-1.5 text-center border border-gray-700/40">
-          <div class="font-bold text-[11px]">🟢 Londres</div>
-          <div class="text-[10px] font-mono text-gray-400 mt-0.5">07:00–10:00 UTC</div>
-          <div class="text-[9px] text-gray-500 mt-0.5">Alta Liquidez</div>
-        </div>
-        <div id="sz-newyork" class="rounded-lg px-2 py-1.5 text-center border border-gray-700/40">
-          <div class="font-bold text-[11px]">🟢 New York</div>
-          <div class="text-[10px] font-mono text-gray-400 mt-0.5">12:00–16:00 UTC</div>
-          <div class="text-[9px] text-gray-500 mt-0.5">Máx. Liquidez</div>
-        </div>
-        <div id="sz-asia" class="rounded-lg px-2 py-1.5 text-center border border-gray-700/40">
-          <div class="font-bold text-[11px]">🟡 Asia / Regular</div>
-          <div class="text-[10px] font-mono text-gray-400 mt-0.5">00:00–06:00 UTC</div>
-          <div class="text-[9px] text-gray-500 mt-0.5">Bajo Volumen</div>
-        </div>
-      </div>
-    </div>
-
-    <script>
-      (function() {
-        function getSession(utcH) {
-          if (utcH >= 7  && utcH < 10) return 'london';
-          if (utcH >= 12 && utcH < 16) return 'newyork';
-          if (utcH >= 0  && utcH < 6)  return 'asia';
-          return 'regular';
-        }
-
-        const sessions = {
-          london:  { label: '🟢 Killzone Londres',  cls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40', cardCls: 'bg-emerald-500/10 border-emerald-500/50' },
-          newyork: { label: '🟢 Killzone New York', cls: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40', cardCls: 'bg-emerald-500/10 border-emerald-500/50' },
-          asia:    { label: '🟡 Sesión Asia',       cls: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40',   cardCls: 'bg-yellow-500/10 border-yellow-500/50'   },
-          regular: { label: '⚪ Sesión Regular',    cls: 'bg-gray-700/40 text-gray-300 border border-gray-600/40',         cardCls: 'bg-gray-700/20 border-gray-600/40'       }
-        };
-
-        let lastSession = '';
-
-        function tick() {
-          const now   = new Date();
-          const utcH  = now.getUTCHours();
-          const active = getSession(utcH);
-          const info  = sessions[active];
-
-          // Reloj local + hora UTC
-          const elClock = document.getElementById('local-clock');
-          if (elClock) {
-            elClock.textContent =
-              now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) +
-              '  (UTC ' + String(utcH).padStart(2,'0') + ':' + String(now.getUTCMinutes()).padStart(2,'0') + ')';
-          }
-
-          // Solo actualizar badge y tarjetas cuando cambia la sesión
-          if (active !== lastSession) {
-            lastSession = active;
-
-            const elName = document.getElementById('session-name');
-            if (elName) {
-              elName.className = 'px-3 py-1 rounded-lg font-extrabold text-xs flex items-center gap-1.5 ' + info.cls;
-              elName.textContent = info.label;
-            }
-
-            // Resaltar tarjeta activa, atenuar las demás
-            ['london','newyork','asia'].forEach(s => {
-              const el = document.getElementById('sz-' + s);
-              if (!el) return;
-              if (s === active) {
-                el.className = 'rounded-lg px-2 py-1.5 text-center border ' + sessions[s].cardCls;
-              } else {
-                el.className = 'rounded-lg px-2 py-1.5 text-center border border-gray-700/40 opacity-35';
-              }
-            });
-          }
-        }
-
-        tick();
-        setInterval(tick, 1000);
-      })();
-    </script>
-
-    <!-- ESCÁNER ESTADO & CONTROLES -->
-    <div class="card-box p-4 flex items-center justify-between">
-      <div>
-        <div class="text-xs font-bold text-white flex items-center gap-2" id="scanner-status-text">
-          <span>Escáner encendido</span>
-        </div>
-        <div class="text-[11px] text-gray-400 mt-0.5">
-          Activo: análisis de alta precisión (15m/1m).<br>
-          <span class="text-gray-500 font-mono text-[10px]" id="last-scan-time">Último escaneo: esperando datos...</span>
-        </div>
-      </div>
-
-      <!-- Botón Power Encendido/Apagado -->
-      <button id="btn-power-toggle" class="w-10 h-10 rounded-xl power-btn-active flex items-center justify-center font-bold text-lg transition-all active:scale-95" title="Encender / Apagar Escáner">
-        ⏻
-      </button>
-    </div>
-
-
-    <!-- 3 KPI METRIC CARDS -->
-    <div class="grid grid-cols-3 gap-2.5">
-      <div class="card-box p-3">
-        <div class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">ANÁLISIS</div>
-        <div class="text-lg font-black text-white mt-1">15</div>
-      </div>
-
-      <div class="card-box p-3">
-        <div class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">SEÑALES</div>
-        <div class="text-lg font-black text-amber-400 mt-1" id="kpi-signals-count">0</div>
-      </div>
-
-      <div class="card-box p-3 cursor-pointer hover:border-amber-500/40 transition-all" id="btn-toggle-filters">
-        <div class="text-[10px] uppercase font-bold text-gray-400 tracking-wider">FILTROS</div>
-        <div class="text-lg font-black text-emerald-400 mt-1 capitalize" id="kpi-filter-mode">estrictos</div>
-      </div>
-    </div>
-
-    <!-- CALCULADORA DE CAPITAL Y APALANCAMIENTO -->
-    <div class="card-box p-3.5 bg-bgCard border-borderSubtle flex items-center justify-between gap-3 text-xs">
-      <div class="flex-1">
-        <label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">💰 MI CAPITAL ($):</label>
-        <div class="flex items-center gap-1 bg-bgDark border border-borderSubtle rounded-lg px-2.5 py-1.5 focus-within:border-amber-500">
-          <span class="text-gray-500 font-bold">$</span>
-          <input type="number" id="input-user-capital" value="500" min="10" step="50" class="w-full bg-transparent text-white font-mono font-bold outline-none text-xs">
-        </div>
-      </div>
-
-      <div class="flex-1">
-        <label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">🎯 RIESGO POR TRADE:</label>
-        <div class="flex items-center gap-1 bg-bgDark border border-borderSubtle rounded-lg px-2.5 py-1.5 focus-within:border-amber-500">
-          <input type="number" id="input-user-risk-pct" value="1.0" min="0.2" max="5" step="0.1" class="w-full bg-transparent text-white font-mono font-bold outline-none text-xs">
-          <span class="text-gray-500 font-bold">%</span>
-        </div>
-      </div>
-
-      <div class="text-right pl-1">
-        <div class="text-[10px] uppercase font-bold text-gray-400">PÉRDIDA MÁX</div>
-        <div class="text-xs font-black text-rose-400 font-mono mt-1" id="kpi-max-loss">$5.00</div>
-      </div>
-    </div>
-
-    <!-- SECCIÓN: SEÑALES VIGENTES -->
-    <div class="space-y-2.5">
-      <div class="flex items-center gap-2 text-xs font-bold text-gray-300 uppercase tracking-wider px-1">
-        <span>⚙️</span> SEÑALES VIGENTES
-      </div>
-
-      <div id="active-signals-container" class="space-y-3">
-        <div class="card-box p-6 text-center text-xs text-gray-500">
-          Escaneando los 15 criptoactivos en Binance...
-        </div>
-      </div>
-    </div>
-
-    <!-- SECCIÓN: APRENDIZAJE ADAPTATIVO & RENDIMIENTO -->
-    <div class="card-box p-3.5 bg-gradient-to-r from-indigo-950/40 via-bgCard to-bgCard border-indigo-500/30 space-y-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-          <span>🧠</span> APRENDIZAJE ADAPTATIVO
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20" id="tracker-net-r">+0.0R Ganancia</span>
-          <button id="btn-reset-tracker" title="Reiniciar auditoría para auditar con el nuevo motor" class="text-gray-400 hover:text-rose-400 text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-all">🔄</button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-3 gap-2 pt-1 text-center">
-        <div class="bg-bgSubcard p-2 rounded-lg border border-borderSubtle">
-          <div class="text-[9px] uppercase font-bold text-gray-400">WIN RATE</div>
-          <div class="text-xs font-black text-white mt-0.5 font-mono" id="tracker-win-rate">...</div>
-        </div>
-
-        <div class="bg-bgSubcard p-2 rounded-lg border border-borderSubtle">
-          <div class="text-[9px] uppercase font-bold text-gray-400">TRADES</div>
-          <div class="text-xs font-black text-white mt-0.5 font-mono" id="tracker-total-trades">0</div>
-        </div>
-
-        <div class="bg-bgSubcard p-2 rounded-lg border border-borderSubtle">
-          <div class="text-[9px] uppercase font-bold text-gray-400">SL ADAPTADO</div>
-          <div class="text-xs font-black text-cyan-400 mt-0.5 font-mono" id="tracker-sl-adapted">Activo</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SECCIÓN: 15 CRIPTOANÁLISIS ACTIVOS -->
-    <div class="space-y-2 pt-2">
-      <div class="flex items-center gap-2 text-xs font-bold text-gray-300 uppercase tracking-wider px-1">
-        <span>⚡</span> 15 CRIPTOANÁLISIS ACTIVOS
-      </div>
-
-      <div class="card-box overflow-x-auto">
-        <table class="w-full text-left min-w-[340px]">
-          <thead>
-            <tr class="text-[10px] text-gray-400 uppercase tracking-wider border-b border-borderSubtle bg-bgDark/40">
-              <th class="py-2.5 px-3 font-semibold">Par</th>
-              <th class="py-2.5 px-3 font-semibold">Precio</th>
-              <th class="py-2.5 px-3 font-semibold">Tendencia</th>
-              <th class="py-2.5 px-3 text-right font-semibold">PnL (%ROI)</th>
-              <th class="py-2.5 px-3 text-right font-semibold">Estado</th>
-            </tr>
-          </thead>
-          <tbody id="crypto-table-tbody">
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">BTC</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">ETH</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">BNB</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">SOL</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">XRP</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">ADA</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">AVAX</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">LINK</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">DOGE</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">TON</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">DOT</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">LTC</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">NEAR</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">SUI</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-            <tr class="crypto-table-row text-xs cursor-pointer group hover:bg-bgCardHover/30 transition-colors border-b border-borderSubtle/30"><td class="py-2.5 px-3 font-bold text-gray-200">APT</td><td class="py-2.5 px-3 font-mono text-gray-300 text-xs">...</td><td class="py-2.5 px-3 text-[10px] font-bold text-gray-400">4H ESCANEANDO...</td><td class="py-2.5 px-3 text-right"><span class="text-gray-600 font-mono text-xs">-</span></td><td class="py-2.5 px-3 text-right font-bold"><span class="text-gray-600 font-mono">-</span></td></tr>
-          </tbody>
-        </table>
-      </div>
-    <!-- FOOTER SUTIL -->
-    <div class="text-center text-[10px] text-gray-500 py-3">
-      SMC Bot Nativo · ZTE Nubia Neo 5G · <span class="build-version-tag font-mono text-gray-400">v20260920-1008</span>
-    </div>
-
-  </div>
-
-  <!-- MODAL DE CONFIGURACIÓN DE DISCORD WEBHOOK -->
-  <div id="discord-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="card-box w-full max-w-md p-5 flex flex-col gap-4 border border-indigo-500/30 shadow-2xl shadow-indigo-500/10 animate-fade">
-      <div class="flex items-center justify-between border-b border-borderSubtle pb-3">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">💬</span>
-          <div>
-            <h3 class="font-extrabold text-sm text-white">Configurar Discord Webhook</h3>
-            <p class="text-[11px] text-gray-400">Recibe cada señal en vivo en tu canal</p>
-          </div>
-        </div>
-        <button id="btn-close-discord" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <div class="space-y-2">
-        <label class="text-xs font-semibold text-gray-300 block">URL del Webhook de Discord:</label>
-        <input type="password" id="input-discord-webhook" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-bgDark border border-borderSubtle focus:border-indigo-500 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none">
-        <p class="text-[10px] text-gray-500">
-          * En Discord: Ajustes de tu canal &gt; Integraciones &gt; Webhooks &gt; Crear Webhook y Copiar URL.
-        </p>
-      </div>
-
-      <div class="flex items-center justify-between pt-2 border-t border-borderSubtle">
-        <button id="btn-test-discord" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
-          <span>🔔</span> Probar Alerta
-        </button>
-
-        <button id="btn-save-discord" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-indigo-600/30">
-          Guardar Webhook
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: API KEYS ═══════════════ -->
-  <div id="modal-api-settings" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4">
-      
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">🔑</span>
-          <div>
-            <h3 class="font-extrabold text-sm text-white">API Keys de Binance Futuros</h3>
-            <p class="text-[11px] text-gray-400">Guardadas solo en tu dispositivo · Nunca en la nube</p>
-          </div>
-        </div>
-        <button id="btn-close-api" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <!-- Selector de Modo Activo (DEMO vs REAL) -->
-      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
-        <button type="button" id="btn-api-modal-mode-demo" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-          <span>🟡</span> Modo DEMO
-        </button>
-        <button type="button" id="btn-api-modal-mode-real" class="flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-          <span>🔴</span> Modo REAL
-        </button>
-      </div>
-
-      <!-- DEMO -->
-      <div id="box-demo-keys" class="space-y-2 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] uppercase font-black text-yellow-400 tracking-wider">🟡 Cuenta DEMO (Testnet)</span>
-          <a href="https://testnet.binancefuture.com" target="_blank" class="text-[10px] text-yellow-400/80 hover:text-yellow-300 underline font-bold">testnet.binancefuture.com ↗</a>
-        </div>
-        <div>
-          <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Demo:</label>
-          <input type="text" id="input-api-demo-key" placeholder="Pega tu API Key Demo aquí"
-            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-yellow-500">
-        </div>
-        <div>
-          <label class="text-[11px] font-semibold text-gray-400 block mb-1">Secret Key Demo:</label>
-          <input type="password" id="input-api-demo-secret" placeholder="Pega tu Secret Key Demo aquí"
-            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-yellow-500">
-        </div>
-      </div>
-
-      <!-- REAL -->
-      <div id="box-real-keys" class="space-y-2 p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
-        <div class="flex items-center justify-between">
-          <span class="text-[10px] uppercase font-black text-rose-400 tracking-wider">🔴 Cuenta REAL (Futuros USDT-M)</span>
-          <span class="text-[10px] text-gray-400 font-bold">Binance.com</span>
-        </div>
-        <div>
-          <label class="text-[11px] font-semibold text-gray-400 block mb-1">API Key Real:</label>
-          <input type="text" id="input-api-real-key" placeholder="Pega tu API Key Real aquí"
-            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-rose-500">
-        </div>
-        <div>
-          <label class="text-[11px] font-semibold text-gray-400 block mb-1">Secret Key Real:</label>
-          <input type="password" id="input-api-real-secret" placeholder="Pega tu Secret Key Real aquí"
-            class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-rose-500">
-        </div>
-      </div>
-
-      <!-- Opción Breakeven -->
-      <div class="flex items-center justify-between p-2.5 rounded-xl bg-bgDark border border-borderSubtle">
-        <div>
-          <div class="text-xs font-bold text-gray-200">🛡️ Breakeven Automático al TP1</div>
-          <div class="text-[10px] text-gray-400">Mueve el Stop Loss a entrada al tocar +1.5R</div>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="check-auto-breakeven" class="sr-only peer" checked>
-          <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-        </label>
-      </div>
-
-      <div class="text-[10px] text-gray-500 leading-relaxed">
-        ⚠️ En Binance → Gestión API → activa permisos de <strong class="text-gray-300">Futuros USDT-M</strong>.
-      </div>
-
-      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-borderSubtle">
-        <button type="button" id="btn-open-qr-export" class="py-2 px-3 bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95" title="Generar código QR para transferir claves a tu móvil">
-          <span>📲</span> Exportar QR
-        </button>
-
-        <button type="button" id="btn-open-qr-scan" class="py-2 px-3 bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95" title="Abrir cámara del móvil para escanear QR de la PC">
-          <span>📷</span> Escanear QR
-        </button>
-      </div>
-
-      <div class="pt-1">
-        <button type="button" id="btn-force-update-modal" onclick="forceCacheCleanAndReload()" class="w-full py-2 px-3 bg-gray-800/90 hover:bg-gray-700 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95">
-          <span>🔄</span> Limpiar Caché y Forzar Actualización (<span class="build-version-tag">v20260920-1008</span>)
-        </button>
-      </div>
-
-      <div class="flex justify-end pt-1">
-        <button id="btn-save-api" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/30 active:scale-95 w-full">
-          🔐 Guardar Claves
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: CONFIRMAR TRADE ═══════════════ -->
-  <div id="modal-confirm-trade" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4">
-      
-      <div class="flex items-center justify-between">
-        <div>
-          <h3 class="font-extrabold text-sm text-white" id="confirm-trade-title">Confirmar Orden</h3>
-          <p class="text-[11px] font-bold" id="confirm-trade-mode-label">Modo: DEMO</p>
-        </div>
-        <button id="btn-close-confirm" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <!-- Selector de Modo dentro del modal de Confirmación -->
-      <div class="flex rounded-xl bg-bgDark p-1 border border-borderSubtle">
-        <button type="button" id="btn-ct-mode-demo" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-          <span>🟡</span> Modo DEMO
-        </button>
-        <button type="button" id="btn-ct-mode-real" class="flex-1 py-1.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-          <span>🔴</span> Modo REAL
-        </button>
-      </div>
-
-      <!-- Resumen de la orden -->
-      <div class="rounded-xl border border-borderSubtle bg-bgSubcard p-3 space-y-2 text-xs">
-        <div class="flex justify-between"><span class="text-gray-400">Par:</span>        <span class="font-bold text-white" id="ct-symbol">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Tipo:</span>       <span class="font-bold" id="ct-type">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Entrada:</span>    <span class="font-mono font-bold text-white" id="ct-entry">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Stop Loss:</span> <span class="font-mono font-bold text-rose-400" id="ct-sl">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Take Profit:</span><span class="font-mono font-bold text-emerald-400" id="ct-tp">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Cantidad:</span>  <span class="font-mono font-bold text-amber-400" id="ct-qty">-</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Apalancamiento:</span><span class="font-mono font-bold text-white" id="ct-lev">-</span></div>
-      </div>
-
-      <!-- Advertencia cuenta real -->
-      <div id="ct-real-warning" class="hidden rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 text-[11px] text-rose-300 font-semibold">
-        🔴 Estás en modo <strong>CUENTA REAL</strong>. Esta orden usará dinero real de tu cuenta de Binance Futuros.
-      </div>
-
-      <div class="flex gap-2 pt-1 border-t border-borderSubtle">
-        <button id="btn-cancel-trade" class="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95">
-          Cancelar
-        </button>
-        <button id="btn-confirm-trade" class="flex-1 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg">
-          <span>⚡</span> <span id="confirm-btn-label">Ejecutar Orden</span>
-        </button>
-      </div>
-    </div>
-  </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: SINCRONIZACIÓN MÓVIL / PC ═══════════════ -->
-  <div id="modal-sync" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-cyan-500/30 p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">☁️</span>
-          <div>
-            <h3 class="font-extrabold text-sm text-white">Sincronización PC ↔ Móvil</h3>
-            <p class="text-[11px] text-gray-400">Comparte tu Win Rate y Trades en vivo</p>
-          </div>
-        </div>
-        <button id="btn-close-sync" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <div class="space-y-3 p-3.5 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-xs">
-        <div>
-          <label class="text-[11px] font-bold text-gray-300 block mb-1">TU CÓDIGO DE SINCRONIZACIÓN:</label>
-          <div class="flex gap-2">
-            <input type="text" id="input-sync-code" placeholder="Ej: LICEISTAS-123"
-              class="w-full bg-bgDark border border-borderSubtle rounded-xl px-3 py-2 text-xs font-mono font-bold text-cyan-300 outline-none uppercase focus:border-cyan-500">
-            <button id="btn-copy-sync-code" class="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-xs font-bold transition-all active:scale-95" title="Copiar código">
-              📋
-            </button>
-          </div>
-        </div>
-        <p class="text-[10px] text-gray-400 leading-relaxed">
-          💡 <strong>Instrucciones:</strong> Copia este código y pégalo en el botón <strong>☁️ Sync</strong> de tu otro dispositivo. Ambos compartirán el mismo Win Rate, historial y trades al instante.
-        </p>
-      </div>
-
-      <div class="flex gap-2 justify-end pt-1 border-t border-borderSubtle">
-        <button id="btn-save-sync" class="w-full py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-cyan-600/30 active:scale-95">
-          🔄 Conectar y Sincronizar Ahora
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: ALERTA TP1 / DECISIÓN BREAKEVEN ═══════════════ -->
-  <div id="modal-tp1-be" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-yellow-500/40 p-5 shadow-2xl space-y-4 shadow-yellow-500/10">
-      <div class="flex items-center justify-between border-b border-borderSubtle pb-3">
-        <div class="flex items-center gap-2">
-          <span class="text-2xl animate-bounce">🎉</span>
-          <div>
-            <h3 class="font-extrabold text-sm text-yellow-400">¡TP1 ALCANZADO (+1.5R)!</h3>
-            <p class="text-[11px] text-gray-300 font-bold" id="be-modal-pair">BTCUSDT</p>
-          </div>
-        </div>
-        <button id="btn-close-be-modal" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <div class="space-y-2 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20 text-xs">
-        <div class="flex justify-between"><span class="text-gray-400">Precio Actual (TP1):</span> <span class="font-mono font-bold text-yellow-300" id="be-modal-current-price">$0.00</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Precio de Entrada:</span> <span class="font-mono font-bold text-white" id="be-modal-entry-price">$0.00</span></div>
-        <div class="flex justify-between"><span class="text-gray-400">Ganancia Parcial:</span> <span class="font-bold text-emerald-400">+1.5R (Asegurada)</span></div>
-      </div>
-
-      <p class="text-[11px] text-gray-300 leading-relaxed text-center">
-        🛡️ El trade ya está en ganancias. ¿Deseas mover el <strong>Stop Loss a Breakeven ($0 riesgo)</strong> en Binance ahora?
-      </p>
-
-      <div class="flex flex-col gap-2 pt-1">
-        <button id="btn-apply-be" class="w-full py-2.5 bg-yellow-500 hover:bg-yellow-400 text-black rounded-xl text-xs font-black transition-all shadow-md shadow-yellow-500/20 active:scale-95 flex items-center justify-center gap-1.5">
-          <span>🛡️</span> Mover SL a Breakeven en Binance
-        </button>
-        <button id="btn-dismiss-be" class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95">
-          Dejar Correr sin Mover SL
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: GENERADOR QR DE CLAVES (PC -> Móvil) ═══════════════ -->
-  <div id="modal-qr-export" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4 text-center">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">📲</span>
-          <div class="text-left">
-            <h3 class="font-extrabold text-sm text-white">Exportar a Móvil con QR</h3>
-            <p class="text-[10px] text-gray-400">Transferencia directa pantalla a cámara</p>
-          </div>
-        </div>
-        <button id="btn-close-qr-export" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <div class="p-4 bg-white rounded-2xl flex items-center justify-center shadow-inner mx-auto w-[240px] h-[240px]" id="qr-export-canvas-container">
-        <div id="qr-export-target"></div>
-      </div>
-
-      <div class="bg-bgDark p-3 rounded-xl border border-borderSubtle text-left space-y-1">
-        <div class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-          <span>📸</span> Instrucciones:
-        </div>
-        <p class="text-[10px] text-gray-300 leading-relaxed">
-          1. En tu teléfono móvil, abre la app y toca <strong>⚙️ API &gt; 📷 Escanear QR</strong>.<br>
-          2. Apunta la cámara a este código y tus claves quedarán guardadas al instante.
-        </p>
-      </div>
-
-      <button id="btn-done-qr-export" class="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95">
-        Cerrar
-      </button>
-    </div>
-  </div>
-
-  <!-- ═══════════════ MODAL: ESCÁNER QR DE CÁMARA (Móvil) ═══════════════ -->
-  <div id="modal-qr-scan" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-    <div class="bg-bgCard w-full max-w-sm rounded-2xl border border-borderSubtle p-5 shadow-2xl space-y-4 text-center">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xl">📷</span>
-          <div class="text-left">
-            <h3 class="font-extrabold text-sm text-white">Escanear Código QR</h3>
-            <p class="text-[10px] text-gray-400">Apunta al QR de tu PC para importar</p>
-          </div>
-        </div>
-        <button id="btn-close-qr-scan" class="text-gray-400 hover:text-white text-lg font-bold">✕</button>
-      </div>
-
-      <div id="qr-reader-container" class="rounded-2xl overflow-hidden bg-black border-2 border-cyan-500/40 mx-auto w-[260px] h-[260px] flex items-center justify-center shadow-lg shadow-cyan-500/10">
-        <div id="qr-reader" class="w-full h-full"></div>
-      </div>
-
-      <p class="text-[10px] text-gray-400">
-        Mantén la cámara firme enfocando el código QR generado en la pantalla de tu PC.
-      </p>
-
-      <button id="btn-cancel-qr-scan" class="w-full py-2 bg-rose-600/20 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition-all active:scale-95">
-        Cancelar Escaneo
-      </button>
-    </div>
-  </div>
-
-  <div id="toast-container"></div>
-
-  <!-- Librerías QR Standalone (Zero-Dependencies) -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script defer src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
-  <!-- Script de recarga forzada y limpieza profunda de Service Worker / Caché -->
-  <script>
-    async function forceCacheCleanAndReload() {
-      const btns = [document.getElementById('btn-force-reload'), document.getElementById('btn-force-update-modal')];
-      btns.forEach(b => { if (b) b.innerHTML = '<span>⏳</span> Limpiando...'; });
-      try {
-        if ('serviceWorker' in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          for (const reg of regs) {
-            await reg.unregister();
-          }
-        }
-        if ('caches' in window) {
-          const keys = await caches.keys();
-          for (const key of keys) {
-            await caches.delete(key);
-          }
-        }
-      } catch (e) {
-        console.warn('[Cache] Error limpiando caché:', e);
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.set('t', Date.now().toString());
-      window.location.replace(url.toString());
-    }
-  </script>
-
-  <!-- Script principal: Bundle unificado (Zero-404, root-level) -->
-  <script id="smc-bundle">
-/* SMC BOT UNIFIED INLINED BUNDLE v20260920-1008 */
 /* SMC BOT UNIFIED BUNDLE */
 
 /* --- js/binance_api.js --- */
@@ -3871,7 +2995,7 @@ function initApp() {
 
     if (event.type === 'TP1_HIT') {
       title = `🎉 ¡TP1 ALCANZADO (+1.5R): ${cleanPair}!`;
-      description = `El precio de **${cleanPair}** alcanzó **${formattedPrice}**.\n\n🛡️ **ACCIÓN RECOMENDADA:**\n1. Cierra el **50% de tu posición** para asegurar ganancias.\n2. Mueve tu Stop Loss al precio de entrada (**${formatPrice(trade.entry, trade.symbol)}** - Breakeven).`;
+      description = `El precio de **${cleanPair}** alcanzó **$${formattedPrice}**.\n\n🛡️ **ACCIÓN RECOMENDADA:**\n1. Cierra el **50% de tu posición** para asegurar ganancias.\n2. Mueve tu Stop Loss al precio de entrada (**$${formatPrice(trade.entry, trade.symbol)}** - Breakeven).`;
       colorCode = 0x3b82f6; // Azul
 
       playChime('LONG');
@@ -3888,8 +3012,8 @@ function initApp() {
       const btnApplyBE = document.getElementById('btn-apply-be');
 
       if (bePairEl) bePairEl.textContent = `${cleanPair} (${trade.type})`;
-      if (beCurrentEl) beCurrentEl.textContent = `${formattedPrice}`;
-      if (beEntryEl) beEntryEl.textContent = `${formatPrice(trade.entry, trade.symbol)}`;
+      if (beCurrentEl) beCurrentEl.textContent = `$${formattedPrice}`;
+      if (beEntryEl) beEntryEl.textContent = `$${formatPrice(trade.entry, trade.symbol)}`;
 
       if (btnApplyBE) {
         btnApplyBE.disabled = false;
@@ -3898,13 +3022,13 @@ function initApp() {
       }
 
       showToast(`🎉 ¡TP1 alcanzado en ${cleanPair} (+1.5R)! Ganancia asegurada.`, 'success');
-      sendBrowserNotification(`🎉 ¡TP1 Alcanzado (+1.5R): ${cleanPair}!`, `🎯 Precio: ${formattedPrice}. Puedes mover tu SL a Breakeven.`);
+      sendBrowserNotification(`🎉 ¡TP1 Alcanzado (+1.5R): ${cleanPair}!`, `🎯 Precio: $${formattedPrice}. Puedes mover tu SL a Breakeven.`);
 
       if (beModal) beModal.classList.remove('hidden');
 
     } else if (event.type === 'TP3_HIT') {
       title = `🚀 ¡OBJETIVO FINAL 1:3 ALCANZADO: ${cleanPair} (+3.0R)!`;
-      description = `🎯 El precio de **${cleanPair}** completó el recorrido institucional hasta **${formattedPrice}**.\n\n💰 **TRADE GANADOR CERRADO CON ÉXITO (+3.0R)**.`;
+      description = `🎯 El precio de **${cleanPair}** completó el recorrido institucional hasta **$${formattedPrice}**.\n\n💰 **TRADE GANADOR CERRADO CON ÉXITO (+3.0R)**.`;
       colorCode = 0x10b981; // Verde
 
       showToast(`🚀 ¡TAKE PROFIT 1:3 ALCANZADO en ${cleanPair} (+3.0R)!`, 'success');
@@ -3912,19 +3036,19 @@ function initApp() {
       if (navigator.vibrate) {
         try { navigator.vibrate([200, 100, 200, 100, 200]); } catch(e) {}
       }
-      sendBrowserNotification(`🚀 ¡Take Profit 1:3: ${cleanPair}!`, `🎯 Precio: ${formattedPrice} (+3.0R Ganancia).`);
+      sendBrowserNotification(`🚀 ¡Take Profit 1:3: ${cleanPair}!`, `🎯 Precio: $${formattedPrice} (+3.0R Ganancia).`);
 
     } else if (event.type === 'SL_HIT') {
       title = `🛑 Stop Loss Tocado en ${cleanPair}`;
-      description = `El precio tocó el Stop Loss en **${formattedPrice}**.\n*Pérdida máxima controlada por gestión de riesgo.*`;
+      description = `El precio tocó el Stop Loss en **$${formattedPrice}**.\n*Pérdida máxima controlada por gestión de riesgo.*`;
       colorCode = 0xef4444; // Rojo
 
-      showToast(`🛑 Stop Loss tocado en ${cleanPair} (${formattedPrice})`, 'danger');
+      showToast(`🛑 Stop Loss tocado en ${cleanPair} ($${formattedPrice})`, 'danger');
       playChime('SHORT');
       if (navigator.vibrate) {
         try { navigator.vibrate([300, 150, 300]); } catch(e) {}
       }
-      sendBrowserNotification(`🛑 Stop Loss: ${cleanPair}`, `Precio tocó SL en ${formattedPrice}. Pérdida controlada.`);
+      sendBrowserNotification(`🛑 Stop Loss: ${cleanPair}`, `Precio tocó SL en $${formattedPrice}. Pérdida controlada.`);
     }
 
     if (!discordWebhookUrl || !discordWebhookUrl.startsWith('http')) return;
@@ -3939,7 +3063,7 @@ function initApp() {
           description: description,
           color: colorCode,
           fields: [
-            { name: 'Entrada Original', value: `\`${formatPrice(trade.entry, trade.symbol)}\``, inline: true },
+            { name: 'Entrada Original', value: `\`$${formatPrice(trade.entry, trade.symbol)}\``, inline: true },
             { name: 'Tipo', value: `\`${trade.type}\``, inline: true },
             { name: 'Enlace', value: `[Abrir ${cleanPair} en Binance](${binanceUrl})`, inline: true }
           ],
@@ -4026,7 +3150,7 @@ function initApp() {
             },
             {
               name: '⚡ GESTIÓN DE CAPITAL Y APALANCAMIENTO:',
-              value: `• **Apalancamiento sugerido:** \`${pos.suggestedLeverage}\`\n• **Margen necesario:** \`${pos.requiredMargin} USDT\`\n• **Tamaño de orden:** \`${qtyFormatted} ${signal.symbol.replace('USDT','')}\` (~${pos.totalPositionUSDT} USDT)\n• **Pérdida Máxima al SL:** \`-${pos.maxLossUSDT} USDT\` (Controlada al ${userRiskPct}%)`,
+              value: `• **Apalancamiento sugerido:** \`${pos.suggestedLeverage}\`\n• **Margen necesario:** \`$${pos.requiredMargin} USDT\`\n• **Tamaño de orden:** \`${qtyFormatted} ${signal.symbol.replace('USDT','')}\` (~$${pos.totalPositionUSDT} USDT)\n• **Pérdida Máxima al SL:** \`-$${pos.maxLossUSDT} USDT\` (Controlada al ${userRiskPct}%)`,
               inline: false
             },
             {
@@ -4112,7 +3236,7 @@ function initApp() {
     const elMaxLoss = document.getElementById('kpi-max-loss');
     if (elMaxLoss) {
       const loss = (userCapital * (userRiskPct / 100)).toFixed(2);
-      elMaxLoss.textContent = `${loss}`;
+      elMaxLoss.textContent = `$${loss}`;
     }
   }
 
@@ -4236,18 +3360,18 @@ function initApp() {
 
               <div class="text-center border-x border-gray-800 px-1">
                 <div class="text-[10px] text-gray-400 font-bold uppercase">TAMAÑO POSICIÓN</div>
-                <div class="text-white font-mono font-bold text-xs mt-0.5 truncate" title="${qtyFormatted} ${s.symbol.replace('USDT','')}">${qtyFormatted} <span class="text-[10px] text-gray-400 font-normal">(${pos.totalPositionUSDT})</span></div>
+                <div class="text-white font-mono font-bold text-xs mt-0.5 truncate" title="${qtyFormatted} ${s.symbol.replace('USDT','')}">${qtyFormatted} <span class="text-[10px] text-gray-400 font-normal">($${pos.totalPositionUSDT})</span></div>
               </div>
 
               <div class="text-right">
                 <div class="text-[10px] text-gray-400 font-bold uppercase">MARGEN NECESARIO</div>
-                <div class="text-emerald-400 font-mono font-bold text-xs mt-0.5">${pos.requiredMargin} USDT</div>
+                <div class="text-emerald-400 font-mono font-bold text-xs mt-0.5">$${pos.requiredMargin} USDT</div>
               </div>
             </div>
 
             <!-- Metas Parciales y Gestión de Riesgo Profesional -->
             <div class="bg-[#131b2c] p-2.5 rounded-lg border border-borderSubtle text-[11px] flex items-center justify-between text-gray-300 leading-snug">
-              <span>🛡️ <strong>Gestión:</strong> Toma 50% de ganancia en <strong>${formattedCardTP1}</strong> (1:1.5) y deja correr a 1:3</span>
+              <span>🛡️ <strong>Gestión:</strong> Toma 50% de ganancia en <strong>$${formattedCardTP1}</strong> (1:1.5) y deja correr a 1:3</span>
             </div>
 
             <!-- Tags SMC + Badges -->
@@ -4279,7 +3403,7 @@ function initApp() {
             <!-- Footer: Precio y Distancia SL -->
             <div class="flex items-center justify-between pt-2 border-t border-gray-800 text-[11px] text-gray-400">
               <span>Precio ${formatPrice(s.currentPrice, s.symbol)}</span>
-              <span class="font-semibold text-gray-300">Distancia SL: ${s.riskPercent.toFixed(2)}% (Pérdida: -${pos.maxLossUSDT})</span>
+              <span class="font-semibold text-gray-300">Distancia SL: ${s.riskPercent.toFixed(2)}% (Pérdida: -$${pos.maxLossUSDT})</span>
             </div>
           `;
 
@@ -4300,7 +3424,7 @@ function initApp() {
             const stp = btnPlan.getAttribute('data-stop') || formattedStop;
             const tpp = btnPlan.getAttribute('data-tp') || formattedTP;
             const tp1Safe = btnPlan.getAttribute('data-tp1') || formattedCardTP1;
-            const fullPlan = `⚡ SEÑAL FUTUROS: ${sym} (${typ})\nEntrada: ${ent}\nStop Loss: ${stp}\nTP1 (50% en 1:1.5): ${tp1Safe}\nTP Final (1:3): ${tpp}\nApalancamiento: ${pos.suggestedLeverage}\nTamaño Orden: ${qtyFormatted}`;
+            const fullPlan = `⚡ SEÑAL FUTUROS: ${sym} (${typ})\nEntrada: ${ent}\nStop Loss: ${stp}\nTP1 (50% en 1:1.5): $${tp1Safe}\nTP Final (1:3): ${tpp}\nApalancamiento: ${pos.suggestedLeverage}\nTamaño Orden: ${qtyFormatted}`;
             copyText(fullPlan, `Plan de ${sym}`);
           });
 
@@ -4912,7 +4036,7 @@ function initApp() {
         try {
           const res = await binanceTrade.moveToBreakeven(pendingBEEvent.symbol, pendingBEEvent.entry, pendingBEEvent.type);
           if (res) {
-            showToast(`🛡️ Stop Loss movido a Breakeven (${formatPrice(pendingBEEvent.entry, pendingBEEvent.symbol)}) en Binance`, 'success');
+            showToast(`🛡️ Stop Loss movido a Breakeven ($${formatPrice(pendingBEEvent.entry, pendingBEEvent.symbol)}) en Binance`, 'success');
           } else {
             showToast('⚠️ No se pudo mover en Binance automáticamente. Modifícalo en Binance.', 'danger');
           }
@@ -4920,7 +4044,7 @@ function initApp() {
           showToast(`❌ Error: ${e.message}`, 'danger');
         }
       } else {
-        showToast(`🛡️ Stop Loss fijado a Breakeven (${formatPrice(pendingBEEvent.entry, pendingBEEvent.symbol)})`, 'success');
+        showToast(`🛡️ Stop Loss fijado a Breakeven ($${formatPrice(pendingBEEvent.entry, pendingBEEvent.symbol)})`, 'success');
       }
 
       btnApplyBE.innerHTML = '<span>✅</span> SL Movido a Breakeven';
@@ -5124,7 +4248,7 @@ function initApp() {
     if (entryEl) entryEl.textContent = formatPrice(signal.entry, signal.symbol);
     if (slEl)    slEl.textContent    = formatPrice(signal.stop, signal.symbol);
     if (tpEl)    tpEl.textContent    = formatPrice(signal.takeProfit, signal.symbol);
-    if (qtyEl)   qtyEl.textContent   = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~${pos.totalPositionUSDT})`;
+    if (qtyEl)   qtyEl.textContent   = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
     if (levEl)   levEl.textContent   = pos.suggestedLeverage;
 
     updateConfirmModalUI();
@@ -5317,53 +4441,3 @@ if (document.readyState === 'loading') {
 
 
 
-
-  </script>
-
-  <!-- Registro del Service Worker + Detección de Actualizaciones (PWA) -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => {
-          let isReloading = false;
-
-          // Forzar chequeo de actualización inmediata cada vez que se carga la página
-          reg.update().catch(() => {});
-
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!isReloading) {
-              isReloading = true;
-              window.location.reload();
-            }
-          });
-
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            if (!newWorker) return;
-
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed') {
-                if (navigator.serviceWorker.controller) {
-                  const banner = document.getElementById('update-banner');
-                  if (banner) banner.classList.remove('hidden');
-                  newWorker.postMessage({ type: 'SKIP_WAITING' });
-                }
-              }
-            });
-          });
-
-          document.getElementById('btn-update-now')?.addEventListener('click', () => {
-            if (reg.waiting) {
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            }
-            setTimeout(() => {
-              window.location.reload();
-            }, 300);
-          });
-
-        }).catch(err => console.warn('[PWA] Error SW:', err));
-      });
-    }
-  </script>
-</body>
-</html>
