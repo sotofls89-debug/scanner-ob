@@ -51,12 +51,14 @@ class BinanceTrade {
     localStorage.setItem(this.storageKey, JSON.stringify(this.config));
   }
 
+  cleanKey(str) {
+    return (str || '').replace(/['"`\s\u200B-\u200D\uFEFF]/g, '').trim();
+  }
+
   isConfigured() {
-    this.config = this.loadConfig();
-    const isDemo = this.isDemo();
-    const key    = isDemo ? this.config.demoKey    : this.config.realKey;
-    const secret = isDemo ? this.config.demoSecret : this.config.realSecret;
-    return Boolean(key && key.length > 10 && secret && secret.length > 10);
+    const key    = this.getApiKey();
+    const secret = this.getSecret();
+    return Boolean(key && key.length >= 32 && secret && secret.length >= 32);
   }
 
   isDemo() {
@@ -81,13 +83,13 @@ class BinanceTrade {
   getApiKey() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoKey : this.config.realKey;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.cleanKey(raw);
   }
 
   getSecret() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoSecret : this.config.realSecret;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.cleanKey(raw);
   }
 
   // ─── Firma HMAC-SHA256 ───────────────────────────────────────────────────────
@@ -116,7 +118,17 @@ class BinanceTrade {
    * @param {number} timeoutMs - Timeout en ms (default 10s)
    */
   async wsRequest(wsMethod, wsParams = {}, timeoutMs = 10000) {
-    const apiKey   = this.getApiKey();
+    const apiKey    = this.getApiKey();
+    const secret    = this.getSecret();
+    const isDemo    = this.isDemo();
+
+    if (!apiKey || apiKey.length < 32) {
+      throw new Error(`API Key para Modo ${isDemo ? 'DEMO' : 'REAL'} no configurada o incompleta (mínimo 32 caracteres). Ve al botón 🔑 API.`);
+    }
+    if (!secret || secret.length < 32) {
+      throw new Error(`Secret Key para Modo ${isDemo ? 'DEMO' : 'REAL'} no configurada o incompleta (mínimo 32 caracteres). Ve al botón 🔑 API.`);
+    }
+
     const timestamp = Date.now();
 
     // Construir objeto de parámetros completo para firmar
@@ -165,7 +177,14 @@ class BinanceTrade {
             resolve(msg.result);
           } else if (msg.error) {
             console.error(`[WS ${wsMethod}] ❌ Error Binance:`, msg.error);
-            reject(new Error(`Binance WS (${msg.error.code}): ${msg.error.msg}`));
+            if (msg.error.code === -2014) {
+              const hint = isDemo
+                ? 'Estás en Modo DEMO: debes usar claves generadas en testnet.binancefuture.com (o cambia a "Modo REAL" si tu clave es de tu cuenta real de Binance).'
+                : 'Estás en Modo REAL: verifica que la API Key sea de tu cuenta real de Binance y tenga habilitados los permisos de Futuros USDT-M.';
+              reject(new Error(`Binance WS (-2014): API-key no válida para Modo ${isDemo ? 'DEMO' : 'REAL'}. ${hint}`));
+            } else {
+              reject(new Error(`Binance WS (${msg.error.code}): ${msg.error.msg}`));
+            }
           } else if (msg.status && msg.status !== 200) {
             console.error(`[WS ${wsMethod}] ❌ Status ${msg.status}:`, msg);
             reject(new Error(`Binance WS status ${msg.status}: ${JSON.stringify(msg)}`));
@@ -548,9 +567,10 @@ class BinanceTrade {
 
     // Redondeo exacto de cantidad a los decimales de lote permitidos
     const finalQty = parseFloat((Math.floor(tradeQty / filters.stepSize) * filters.stepSize).toFixed(filters.qtyDecimals));
+    const finalQtyStr = finalQty.toFixed(filters.qtyDecimals);
 
     if (finalQty < filters.minQty) {
-      throw new Error(`Cantidad (${finalQty}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
+      throw new Error(`Cantidad (${finalQtyStr}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
     }
 
     // 1b. Obtener precio actual de mercado directamente (GET público sin CORS) para validar SL
@@ -603,7 +623,7 @@ class BinanceTrade {
       symbol: cleanSym,
       side,
       type: 'MARKET',
-      quantity: finalQty
+      quantity: finalQtyStr
     };
     if (isDual) entryParams.positionSide = positionSide;
 
@@ -633,7 +653,7 @@ class BinanceTrade {
 
       if (isDual) {
         slParams.positionSide = positionSide;
-        slParams.quantity     = finalQty;
+        slParams.quantity     = finalQtyStr;
       } else {
         slParams.positionSide  = 'BOTH';
         slParams.closePosition = 'true';
@@ -690,7 +710,7 @@ class BinanceTrade {
             type:          'STOP',
             stopPrice:     safeStopPrice,
             price:         safeStopPrice,
-            quantity:      finalQty,
+            quantity:      finalQtyStr,
             timeInForce:   'GTC',
             workingType:   'MARK_PRICE'
           };
@@ -726,7 +746,7 @@ class BinanceTrade {
         side:        closeSide,
         type:        'LIMIT',
         price:       formattedTP,
-        quantity:    finalQty,
+        quantity:    finalQtyStr,
         reduceOnly:  true,
         timeInForce: 'GTC'
       };
@@ -748,7 +768,7 @@ class BinanceTrade {
           side:        closeSide,
           type:        'TAKE_PROFIT_MARKET',
           stopPrice:   formattedTP,
-          quantity:    finalQty,
+          quantity:    finalQtyStr,
           workingType: 'MARK_PRICE'
         };
         if (isDual) {

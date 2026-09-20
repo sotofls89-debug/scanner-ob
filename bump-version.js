@@ -67,6 +67,21 @@ if (fs.existsSync(htmlPath)) {
   htmlContent = htmlContent.replace(/href="styles\.css(?:\?v=[^"]*)?"/g, `href="styles.css?v=${version}"`);
   htmlContent = htmlContent.replace(/(<span[^>]*class="[^"]*build-version-tag[^"]*"[^>]*>)[^<]*(<\/span>)/g, `$1v${version}$2`);
   fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+
+  // Sincronizar automáticamente a los assets de la app nativa Android
+  const androidAssetsDir = path.join(__dirname, 'android_native', 'app', 'src', 'main', 'assets');
+  if (fs.existsSync(androidAssetsDir)) {
+    fs.writeFileSync(path.join(androidAssetsDir, 'index.html'), htmlContent, 'utf8');
+    fs.writeFileSync(path.join(androidAssetsDir, 'bundle.js'), bundleContent, 'utf8');
+    if (fs.existsSync(swPath)) {
+      fs.copyFileSync(swPath, path.join(androidAssetsDir, 'sw.js'));
+    }
+    const stylesPath = path.join(__dirname, 'styles.css');
+    if (fs.existsSync(stylesPath)) {
+      fs.copyFileSync(stylesPath, path.join(androidAssetsDir, 'styles.css'));
+    }
+    console.log(`📱 Assets sincronizados con android_native/app/src/main/assets`);
+  }
 }
 
 console.log(`✅ Bundle y versión actualizados: v${version}`);

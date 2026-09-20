@@ -1727,12 +1727,14 @@ class BinanceTrade {
     localStorage.setItem(this.storageKey, JSON.stringify(this.config));
   }
 
+  cleanKey(str) {
+    return (str || '').replace(/['"`\s\u200B-\u200D\uFEFF]/g, '').trim();
+  }
+
   isConfigured() {
-    this.config = this.loadConfig();
-    const isDemo = this.isDemo();
-    const key    = isDemo ? this.config.demoKey    : this.config.realKey;
-    const secret = isDemo ? this.config.demoSecret : this.config.realSecret;
-    return Boolean(key && key.length > 10 && secret && secret.length > 10);
+    const key    = this.getApiKey();
+    const secret = this.getSecret();
+    return Boolean(key && key.length >= 32 && secret && secret.length >= 32);
   }
 
   isDemo() {
@@ -1757,13 +1759,13 @@ class BinanceTrade {
   getApiKey() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoKey : this.config.realKey;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.cleanKey(raw);
   }
 
   getSecret() {
     this.config = this.loadConfig();
     const raw = this.isDemo() ? this.config.demoSecret : this.config.realSecret;
-    return (raw || '').trim().replace(/\s+/g, '');
+    return this.cleanKey(raw);
   }
 
   // ─── Firma HMAC-SHA256 ───────────────────────────────────────────────────────
@@ -1792,7 +1794,17 @@ class BinanceTrade {
    * @param {number} timeoutMs - Timeout en ms (default 10s)
    */
   async wsRequest(wsMethod, wsParams = {}, timeoutMs = 10000) {
-    const apiKey   = this.getApiKey();
+    const apiKey    = this.getApiKey();
+    const secret    = this.getSecret();
+    const isDemo    = this.isDemo();
+
+    if (!apiKey || apiKey.length < 32) {
+      throw new Error(`API Key para Modo ${isDemo ? 'DEMO' : 'REAL'} no configurada o incompleta (mínimo 32 caracteres). Ve al botón 🔑 API.`);
+    }
+    if (!secret || secret.length < 32) {
+      throw new Error(`Secret Key para Modo ${isDemo ? 'DEMO' : 'REAL'} no configurada o incompleta (mínimo 32 caracteres). Ve al botón 🔑 API.`);
+    }
+
     const timestamp = Date.now();
 
     // Construir objeto de parámetros completo para firmar
@@ -1841,7 +1853,14 @@ class BinanceTrade {
             resolve(msg.result);
           } else if (msg.error) {
             console.error(`[WS ${wsMethod}] ❌ Error Binance:`, msg.error);
-            reject(new Error(`Binance WS (${msg.error.code}): ${msg.error.msg}`));
+            if (msg.error.code === -2014) {
+              const hint = isDemo
+                ? 'Estás en Modo DEMO: debes usar claves generadas en testnet.binancefuture.com (o cambia a "Modo REAL" si tu clave es de tu cuenta real de Binance).'
+                : 'Estás en Modo REAL: verifica que la API Key sea de tu cuenta real de Binance y tenga habilitados los permisos de Futuros USDT-M.';
+              reject(new Error(`Binance WS (-2014): API-key no válida para Modo ${isDemo ? 'DEMO' : 'REAL'}. ${hint}`));
+            } else {
+              reject(new Error(`Binance WS (${msg.error.code}): ${msg.error.msg}`));
+            }
           } else if (msg.status && msg.status !== 200) {
             console.error(`[WS ${wsMethod}] ❌ Status ${msg.status}:`, msg);
             reject(new Error(`Binance WS status ${msg.status}: ${JSON.stringify(msg)}`));
@@ -2224,9 +2243,10 @@ class BinanceTrade {
 
     // Redondeo exacto de cantidad a los decimales de lote permitidos
     const finalQty = parseFloat((Math.floor(tradeQty / filters.stepSize) * filters.stepSize).toFixed(filters.qtyDecimals));
+    const finalQtyStr = finalQty.toFixed(filters.qtyDecimals);
 
     if (finalQty < filters.minQty) {
-      throw new Error(`Cantidad (${finalQty}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
+      throw new Error(`Cantidad (${finalQtyStr}) menor al mínimo permitido (${filters.minQty} ${cleanSym.replace('USDT', '')}).`);
     }
 
     // 1b. Obtener precio actual de mercado directamente (GET público sin CORS) para validar SL
@@ -2279,7 +2299,7 @@ class BinanceTrade {
       symbol: cleanSym,
       side,
       type: 'MARKET',
-      quantity: finalQty
+      quantity: finalQtyStr
     };
     if (isDual) entryParams.positionSide = positionSide;
 
@@ -2309,7 +2329,7 @@ class BinanceTrade {
 
       if (isDual) {
         slParams.positionSide = positionSide;
-        slParams.quantity     = finalQty;
+        slParams.quantity     = finalQtyStr;
       } else {
         slParams.positionSide  = 'BOTH';
         slParams.closePosition = 'true';
@@ -2366,7 +2386,7 @@ class BinanceTrade {
             type:          'STOP',
             stopPrice:     safeStopPrice,
             price:         safeStopPrice,
-            quantity:      finalQty,
+            quantity:      finalQtyStr,
             timeInForce:   'GTC',
             workingType:   'MARK_PRICE'
           };
@@ -2402,7 +2422,7 @@ class BinanceTrade {
         side:        closeSide,
         type:        'LIMIT',
         price:       formattedTP,
-        quantity:    finalQty,
+        quantity:    finalQtyStr,
         reduceOnly:  true,
         timeInForce: 'GTC'
       };
@@ -2424,7 +2444,7 @@ class BinanceTrade {
           side:        closeSide,
           type:        'TAKE_PROFIT_MARKET',
           stopPrice:   formattedTP,
-          quantity:    finalQty,
+          quantity:    finalQtyStr,
           workingType: 'MARK_PRICE'
         };
         if (isDual) {
@@ -2956,6 +2976,30 @@ function initApp() {
     return num.toFixed(8);
   }
 
+  function formatQuantity(val, symbol = '') {
+    if (val === null || val === undefined || isNaN(val)) return '...';
+    const num = Number(val);
+    if (num <= 0) return '0';
+
+    const clean = symbol.replace('/', '').toUpperCase();
+    const defaultStepDecimals = {
+      'BTCUSDT': 3, 'ETHUSDT': 3, 'BNBUSDT': 2, 'SOLUSDT': 2, 'XRPUSDT': 1,
+      'ADAUSDT': 0, 'AVAXUSDT': 1, 'LINKUSDT': 2, 'DOGEUSDT': 0, 'TONUSDT': 1,
+      'DOTUSDT': 1, 'LTCUSDT': 3, 'NEARUSDT': 1, 'SUIUSDT': 1, 'APTUSDT': 1
+    };
+
+    if (clean && defaultStepDecimals[clean] !== undefined) {
+      return num.toFixed(defaultStepDecimals[clean]);
+    }
+
+    if (num < 0.001) return num.toFixed(5);
+    if (num < 0.01)  return num.toFixed(4);
+    if (num < 1)     return num.toFixed(3);
+    if (num < 10)    return num.toFixed(2);
+    if (num < 100)   return num.toFixed(1);
+    return num.toFixed(0);
+  }
+
   /**
    * Calculadora de Posición y Apalancamiento
    */
@@ -3102,7 +3146,7 @@ function initApp() {
 
     // Cálculo de Posición
     const pos = calculatePosition(signal.entry, signal.riskPercent);
-    const qtyFormatted = formatPrice(pos.quantity, signal.symbol);
+    const qtyFormatted = formatQuantity(pos.quantity, signal.symbol);
 
     const tagsFormatted = signal.tags && signal.tags.length > 0 
       ? signal.tags.join('\n') 
@@ -3290,7 +3334,7 @@ function initApp() {
 
           // Cálculo de Posición
           const pos = calculatePosition(s.entry, s.riskPercent);
-          const qtyFormatted = formatPrice(pos.quantity, s.symbol);
+          const qtyFormatted = formatQuantity(pos.quantity, s.symbol);
 
           const cleanPair = s.symbol.replace('/', '').toUpperCase();
           const binanceFuturesUrl = `https://www.binance.com/es/futures/${cleanPair}`;
@@ -4248,7 +4292,7 @@ function initApp() {
     if (entryEl) entryEl.textContent = formatPrice(signal.entry, signal.symbol);
     if (slEl)    slEl.textContent    = formatPrice(signal.stop, signal.symbol);
     if (tpEl)    tpEl.textContent    = formatPrice(signal.takeProfit, signal.symbol);
-    if (qtyEl)   qtyEl.textContent   = `${formatPrice(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
+    if (qtyEl)   qtyEl.textContent   = `${formatQuantity(pos.quantity, signal.symbol)} ${signal.symbol.replace('USDT','')} (~$${pos.totalPositionUSDT})`;
     if (levEl)   levEl.textContent   = pos.suggestedLeverage;
 
     updateConfirmModalUI();
@@ -4276,20 +4320,48 @@ function initApp() {
       }`;
     }
 
-    const warning = document.getElementById('ct-real-warning');
-    if (warning) {
-      if (isDemo) warning.classList.add('hidden');
-      else        warning.classList.remove('hidden');
+    const demoWarning = document.getElementById('ct-demo-warning');
+    const realWarning = document.getElementById('ct-real-warning');
+    const missingKeyWarning = document.getElementById('ct-missing-key-warning');
+    const missingKeyText = document.getElementById('ct-missing-key-text');
+
+    if (demoWarning) {
+      if (isDemo) demoWarning.classList.remove('hidden');
+      else        demoWarning.classList.add('hidden');
+    }
+    if (realWarning) {
+      if (isDemo) realWarning.classList.add('hidden');
+      else        realWarning.classList.remove('hidden');
+    }
+
+    const hasKeys = binanceTrade.isConfigured();
+    if (missingKeyWarning) {
+      if (!hasKeys) {
+        missingKeyWarning.classList.remove('hidden');
+        if (missingKeyText) {
+          missingKeyText.textContent = `No has configurado claves API para Modo ${isDemo ? 'DEMO' : 'REAL'}. Toca el botón 🔑 API arriba para ingresarlas.`;
+        }
+      } else {
+        missingKeyWarning.classList.add('hidden');
+      }
     }
 
     const confirmBtn = document.getElementById('btn-confirm-trade');
     if (confirmBtn) {
+      confirmBtn.disabled = !hasKeys;
       confirmBtn.className = `flex-1 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg ${
-        isDemo ? 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-500/20' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+        !hasKeys ? 'bg-gray-700 text-gray-400 cursor-not-allowed opacity-50 shadow-none' :
+        (isDemo ? 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-500/20' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30')
       }`;
     }
     const label = document.getElementById('confirm-btn-label');
-    if (label) label.textContent = isDemo ? '⚡ Ejecutar en DEMO' : '⚠️ Ejecutar con DINERO REAL';
+    if (label) {
+      if (!hasKeys) {
+        label.textContent = 'Configura API primero';
+      } else {
+        label.textContent = isDemo ? '⚡ Ejecutar en DEMO' : '⚠️ Ejecutar con DINERO REAL';
+      }
+    }
   }
 
   document.getElementById('btn-ct-mode-demo')?.addEventListener('click', (e) => {
