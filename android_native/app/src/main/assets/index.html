@@ -216,7 +216,7 @@ body {
 
 
 </style>
-  <link rel="stylesheet" href="styles.css?v=20260920-1049">
+  <link rel="stylesheet" href="styles.css?v=20260920-1120">
 </head>
 <body class="bg-bgDark text-white select-none min-h-screen flex justify-center py-4 px-3 sm:px-6">
 
@@ -496,7 +496,7 @@ body {
       </div>
     <!-- FOOTER SUTIL -->
     <div class="text-center text-[10px] text-gray-500 py-3">
-      SMC Bot Nativo · ZTE Nubia Neo 5G · <span class="build-version-tag font-mono text-gray-400">v20260920-1049</span>
+      SMC Bot Nativo · ZTE Nubia Neo 5G · <span class="build-version-tag font-mono text-gray-400">v20260920-1120</span>
     </div>
 
   </div>
@@ -861,7 +861,7 @@ body {
 
   <!-- Script principal: Bundle unificado (Zero-404, root-level) -->
   <script id="smc-bundle">
-/* SMC BOT UNIFIED INLINED BUNDLE v20260920-1049 */
+/* SMC BOT UNIFIED INLINED BUNDLE v20260920-1120 */
 /* SMC BOT UNIFIED BUNDLE */
 
 /* --- js/binance_api.js --- */
@@ -2902,10 +2902,17 @@ class BinanceTrade {
 
     if (isConditional) {
       if (method === 'POST') {
+        const rawTrigger = params.triggerPrice || params.stopPrice;
         const algoParams = {
           algoType: 'CONDITIONAL',
           ...params
         };
+        if (rawTrigger) {
+          algoParams.triggerPrice = String(rawTrigger);
+        }
+        delete algoParams.stopPrice; // Evita -1102 / campos redundantes en Algo Service
+
+        console.log('[Trade] 📤 Enviando orden condicional (Algo WS):', JSON.stringify(algoParams));
         try {
           const result = await this.wsRequest('algoOrder.place', algoParams);
           console.log(`[Trade] ✅ WS algoOrder.place OK:`, result);
@@ -2920,10 +2927,15 @@ class BinanceTrade {
           }
         }
       } else if (method === 'DELETE') {
+        const algoCancelParams = {
+          symbol: params.symbol,
+          ...(params.algoId ? { algoId: params.algoId } : {}),
+          ...(params.orderId && !params.algoId ? { algoId: params.orderId } : {})
+        };
         try {
-          return await this.wsRequest('algoOrder.cancel', params);
+          return await this.wsRequest('algoOrder.cancel', algoCancelParams);
         } catch (delWsErr) {
-          return await this.httpRequest('DELETE', '/fapi/v1/algoOrder', params);
+          return await this.httpRequest('DELETE', '/fapi/v1/algoOrder', algoCancelParams);
         }
       }
     }
@@ -3187,7 +3199,7 @@ class BinanceTrade {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
-        stopPrice:     formattedStop,
+        triggerPrice:  formattedStop,
         workingType:   'MARK_PRICE'
       };
 
@@ -3222,8 +3234,8 @@ class BinanceTrade {
           symbol:        cleanSym,
           side:          closeSide,
           type:          'STOP_MARKET',
-          stopPrice:     safeStopPrice,
-          quantity:      finalQty,
+          triggerPrice:  safeStopPrice,
+          quantity:      finalQtyStr,
           workingType:   'MARK_PRICE'
         };
         if (isDual) {
@@ -3248,7 +3260,7 @@ class BinanceTrade {
             symbol:        cleanSym,
             side:          closeSide,
             type:          'STOP',
-            stopPrice:     safeStopPrice,
+            triggerPrice:  safeStopPrice,
             price:         safeStopPrice,
             quantity:      finalQtyStr,
             timeInForce:   'GTC',
@@ -3304,12 +3316,12 @@ class BinanceTrade {
       console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET...');
       try {
         const tpMkt = {
-          symbol:      cleanSym,
-          side:        closeSide,
-          type:        'TAKE_PROFIT_MARKET',
-          stopPrice:   formattedTP,
-          quantity:    finalQtyStr,
-          workingType: 'MARK_PRICE'
+          symbol:       cleanSym,
+          side:         closeSide,
+          type:         'TAKE_PROFIT_MARKET',
+          triggerPrice: formattedTP,
+          quantity:     finalQtyStr,
+          workingType:  'MARK_PRICE'
         };
         if (isDual) {
           tpMkt.positionSide = positionSide;
@@ -3378,7 +3390,7 @@ class BinanceTrade {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
-        stopPrice:     bePrice,
+        triggerPrice:  bePrice,
         workingType:   'MARK_PRICE'
       };
       if (isDual) {

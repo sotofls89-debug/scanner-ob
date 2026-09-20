@@ -2038,10 +2038,17 @@ class BinanceTrade {
 
     if (isConditional) {
       if (method === 'POST') {
+        const rawTrigger = params.triggerPrice || params.stopPrice;
         const algoParams = {
           algoType: 'CONDITIONAL',
           ...params
         };
+        if (rawTrigger) {
+          algoParams.triggerPrice = String(rawTrigger);
+        }
+        delete algoParams.stopPrice; // Evita -1102 / campos redundantes en Algo Service
+
+        console.log('[Trade] 📤 Enviando orden condicional (Algo WS):', JSON.stringify(algoParams));
         try {
           const result = await this.wsRequest('algoOrder.place', algoParams);
           console.log(`[Trade] ✅ WS algoOrder.place OK:`, result);
@@ -2056,10 +2063,15 @@ class BinanceTrade {
           }
         }
       } else if (method === 'DELETE') {
+        const algoCancelParams = {
+          symbol: params.symbol,
+          ...(params.algoId ? { algoId: params.algoId } : {}),
+          ...(params.orderId && !params.algoId ? { algoId: params.orderId } : {})
+        };
         try {
-          return await this.wsRequest('algoOrder.cancel', params);
+          return await this.wsRequest('algoOrder.cancel', algoCancelParams);
         } catch (delWsErr) {
-          return await this.httpRequest('DELETE', '/fapi/v1/algoOrder', params);
+          return await this.httpRequest('DELETE', '/fapi/v1/algoOrder', algoCancelParams);
         }
       }
     }
@@ -2323,7 +2335,7 @@ class BinanceTrade {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
-        stopPrice:     formattedStop,
+        triggerPrice:  formattedStop,
         workingType:   'MARK_PRICE'
       };
 
@@ -2358,8 +2370,8 @@ class BinanceTrade {
           symbol:        cleanSym,
           side:          closeSide,
           type:          'STOP_MARKET',
-          stopPrice:     safeStopPrice,
-          quantity:      finalQty,
+          triggerPrice:  safeStopPrice,
+          quantity:      finalQtyStr,
           workingType:   'MARK_PRICE'
         };
         if (isDual) {
@@ -2384,7 +2396,7 @@ class BinanceTrade {
             symbol:        cleanSym,
             side:          closeSide,
             type:          'STOP',
-            stopPrice:     safeStopPrice,
+            triggerPrice:  safeStopPrice,
             price:         safeStopPrice,
             quantity:      finalQtyStr,
             timeInForce:   'GTC',
@@ -2440,12 +2452,12 @@ class BinanceTrade {
       console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET...');
       try {
         const tpMkt = {
-          symbol:      cleanSym,
-          side:        closeSide,
-          type:        'TAKE_PROFIT_MARKET',
-          stopPrice:   formattedTP,
-          quantity:    finalQtyStr,
-          workingType: 'MARK_PRICE'
+          symbol:       cleanSym,
+          side:         closeSide,
+          type:         'TAKE_PROFIT_MARKET',
+          triggerPrice: formattedTP,
+          quantity:     finalQtyStr,
+          workingType:  'MARK_PRICE'
         };
         if (isDual) {
           tpMkt.positionSide = positionSide;
@@ -2514,7 +2526,7 @@ class BinanceTrade {
         symbol:        cleanSym,
         side:          closeSide,
         type:          'STOP_MARKET',
-        stopPrice:     bePrice,
+        triggerPrice:  bePrice,
         workingType:   'MARK_PRICE'
       };
       if (isDual) {
