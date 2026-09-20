@@ -162,3 +162,81 @@ body {
   display: none !important;
 }
 
+/* ─── Modern Toggle Switches (Interruptores deslizantes) ─── */
+.switch-container {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch-container input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 24px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: #94a3b8;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Modo Automático: Verde Esmeralda */
+input:checked + .switch-slider {
+  background-color: #10b981;
+  border-color: #059669;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+input:checked + .switch-slider:before {
+  transform: translateX(20px);
+  background-color: #ffffff;
+}
+
+/* Modo Real: Rojo Vibrante */
+.switch-real input:checked + .switch-slider {
+  background-color: #ef4444;
+  border-color: #dc2626;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+.switch-real input:checked + .switch-slider:before {
+  transform: translateX(20px);
+  background-color: #ffffff;
+}
+
+/* Auto Breakeven: Cyan / Azul */
+.switch-breakeven input:checked + .switch-slider {
+  background-color: #06b6d4;
+  border-color: #0891b2;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+}
+
+.switch-breakeven input:checked + .switch-slider:before {
+  transform: translateX(20px);
+  background-color: #ffffff;
+}

@@ -297,10 +297,31 @@ function initApp() {
         btnApplyBE.innerHTML = '<span>🛡️</span> Mover SL a Breakeven en Binance';
       }
 
-      showToast(`🎉 ¡TP1 alcanzado en ${cleanPair} (+1.5R)! Ganancia asegurada.`, 'success');
+      showToast(`🎉 ¡TP1 alcanzado en ${cleanPair} (+1.5R)!`, 'success');
       sendBrowserNotification(`🎉 ¡TP1 Alcanzado (+1.5R): ${cleanPair}!`, `🎯 Precio: $${formattedPrice}. Puedes mover tu SL a Breakeven.`);
 
-      if (beModal) beModal.classList.remove('hidden');
+      // Si el usuario tiene activo Auto Breakeven (por defecto activado):
+      const isAutoBE = localStorage.getItem('smc_auto_breakeven') !== 'false';
+      if (isAutoBE && binanceTrade && binanceTrade.isConfigured()) {
+        try {
+          console.log(`[Auto BE] 🛡️ TP1 alcanzado para ${cleanPair}. Moviendo SL automáticamente a Breakeven...`);
+          showToast(`🛡️ Auto Breakeven: Moviendo SL de ${cleanPair} a entrada...`, 'info');
+          binanceTrade.moveToBreakeven(trade.symbol, trade.entry, trade.type).then(res => {
+            if (res) {
+              showToast(`🛡️ Auto Breakeven exitoso en ${cleanPair}: SL fijado en Binance`, 'success');
+            }
+          }).catch(beErr => {
+            console.error('[Auto BE Error]', beErr);
+            showToast(`⚠️ Auto BE error en ${cleanPair}: ${beErr.message}`, 'danger');
+            if (beModal) beModal.classList.remove('hidden');
+          });
+        } catch (syncErr) {
+          console.error('[Auto BE Sync Error]', syncErr);
+          if (beModal) beModal.classList.remove('hidden');
+        }
+      } else {
+        if (beModal) beModal.classList.remove('hidden');
+      }
 
     } else if (event.type === 'TP3_HIT') {
       title = `🚀 ¡OBJETIVO FINAL 1:3 ALCANZADO: ${cleanPair} (+3.0R)!`;
@@ -487,11 +508,92 @@ function initApp() {
     }
   }
 
-  function handleAlert(item) {
+  async function handleAlert(item) {
     if (item.signal) {
       playChime(item.signal.type);
       showToast(`Nueva señal ${item.signal.type} en ${item.symbol}`, 'success');
       sendDiscordSignal(item.signal);
+
+      // Si el modo Auto-Trading está activo, ejecutar automáticamente
+      if (localStorage.getItem('smc_auto_trading') === 'true') {
+        await executeAutoTrade(item.signal);
+      }
+    }
+  }
+
+  async function executeAutoTrade(signal) {
+    if (!signal) return;
+    if (!binanceTrade || !binanceTrade.isConfigured()) {
+      showToast('⚠️ Auto-Trading: API Keys no configuradas en Binance', 'danger');
+      return;
+    }
+
+    const cleanPair = signal.symbol.replace('/', '').toUpperCase();
+
+    // 1. Evitar órdenes duplicadas si ya hay un trade abierto en este símbolo
+    if (scanner.hasUserOpenTrade(signal.symbol)) {
+      console.log(`[Auto-Trading] Ignorado: Ya existe una operación en curso para ${cleanPair}`);
+      return;
+    }
+
+    // 2. Control de riesgo institucional: Máximo 2 posiciones concurrentes
+    const openTrades = scanner.userExecutedTrades?.filter(t => t.status === 'OPEN') || [];
+    if (openTrades.length >= 2) {
+      console.log(`[Auto-Trading] Máximo de 2 operaciones abiertas alcanzado. Omitiendo ${cleanPair}`);
+      showToast(`🤖 Auto-Trading: Máximo de 2 operaciones alcanzado (Omitida ${cleanPair})`, 'info');
+      return;
+    }
+
+    try {
+      showToast(`🤖 [AUTO] Ejecutando orden automática ${cleanPair} ${signal.type}...`, 'info');
+      const pos = calculatePosition(signal.entry, signal.riskPercent);
+      const leverage = parseInt(pos.suggestedLeverage.replace('x', '')) || 10;
+
+      const result = await binanceTrade.executeTrade(signal, {
+        leverage,
+        quantity: pos.quantity
+      });
+
+      const allOk = result.slOrderId && result.tpOrderId;
+      showToast(
+        `🤖 [AUTO] ✅ ${result.symbol} ${result.type} (${result.quantity} contratos) | ` +
+        (result.slOrderId ? `SL ✓` : `⚠️ SL FALLIDO`) + ` | ` +
+        (result.tpOrderId ? `TP ✓` : `⚠️ TP FALLIDO`),
+        allOk ? 'success' : 'info'
+      );
+
+      if (!result.slOrderId) {
+        setTimeout(() => showToast(`🛑 Auto-Trading: SL no colocado (${result.slErrorMsg || 'error'})`, 'danger'), 1200);
+      }
+      if (!result.tpOrderId) {
+        setTimeout(() => showToast(`🎯 Auto-Trading: TP no colocado (${result.tpErrorMsg || 'error'})`, 'danger'), 2400);
+      }
+
+      playChime(signal.type);
+
+      // Registrar trade en el tracker y en scanner
+      tradeTracker.registerSignal(signal);
+      scanner.addUserExecutedTrade(signal, {
+        quantity: result.quantity || pos.quantity,
+        leverage: result.leverage || leverage
+      });
+
+      setTimeout(syncBinancePositions, 1200);
+
+      if (window._cloudSync) {
+        window._cloudSync.pushToCloud({
+          trades: tradeTracker.trades,
+          memory: tradeTracker.memory,
+          syncPayload: scanner.getExecutedPayload(),
+          userCapital,
+          userRiskPct,
+          filterMode: smcDetector.filterMode
+        });
+      }
+      renderApp(scanner.getAllResults());
+    } catch (err) {
+      console.error('[Auto-Trading Error]', err);
+      showToast(`❌ Auto-Trading falló en ${cleanPair}: ${err.message}`, 'danger');
     }
   }
 
@@ -914,6 +1016,18 @@ function initApp() {
       if (modeIcon) modeIcon.textContent = isDemo ? '🟡' : '🔴';
       if (modeLabel) modeLabel.textContent = isDemo ? 'DEMO' : 'REAL';
 
+      // Sincronizar Interruptor Cuenta Demo / Real en el panel de control
+      const switchAccountMode = document.getElementById('switch-account-mode');
+      const accountModeIcon = document.getElementById('account-mode-icon');
+      const lblAccountMode = document.getElementById('lbl-account-mode');
+      const lblAccountModeDesc = document.getElementById('lbl-account-mode-desc');
+      if (switchAccountMode) {
+        switchAccountMode.checked = !isDemo; // false = Demo, true = Real
+      }
+      if (accountModeIcon) accountModeIcon.textContent = isDemo ? '🟡' : '🔴';
+      if (lblAccountMode) lblAccountMode.textContent = isDemo ? 'DEMO' : 'REAL';
+      if (lblAccountModeDesc) lblAccountModeDesc.textContent = isDemo ? 'Testnet / Simulado' : 'Fondos Reales';
+
       if (btnModalDemo) {
         btnModalDemo.className = `flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
           isDemo ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 shadow-sm' : 'text-gray-400 hover:text-white border border-transparent'
@@ -959,6 +1073,66 @@ function initApp() {
     btnModalReal?.addEventListener('click', (e) => {
       e.preventDefault();
       setAppMode('real');
+    });
+
+    // ─── Interruptor Cuenta Demo / Real del panel ───
+    const switchAccountMode = document.getElementById('switch-account-mode');
+    switchAccountMode?.addEventListener('change', (e) => {
+      setAppMode(e.target.checked ? 'real' : 'demo');
+    });
+
+    // ─── Interruptor Auto-Trading ───
+    const switchAutoTrading = document.getElementById('switch-auto-trading');
+    const lblAutoTradingStatus = document.getElementById('lbl-auto-trading-status');
+
+    function updateAutoTradingUI() {
+      const isAuto = localStorage.getItem('smc_auto_trading') === 'true';
+      if (switchAutoTrading) switchAutoTrading.checked = isAuto;
+      if (lblAutoTradingStatus) {
+        if (isAuto) {
+          lblAutoTradingStatus.textContent = 'ACTIVO ⚡';
+          lblAutoTradingStatus.className = 'text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse';
+        } else {
+          lblAutoTradingStatus.textContent = 'MANUAL';
+          lblAutoTradingStatus.className = 'text-[11px] font-black px-2 py-0.5 rounded-full bg-gray-700/50 text-gray-400 border border-gray-600/40';
+        }
+      }
+    }
+    updateAutoTradingUI();
+
+    switchAutoTrading?.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        if (!binanceTrade.isConfigured()) {
+          showToast('⚠️ Configura primero tus API Keys de Binance para usar Auto-Trading', 'danger');
+          e.target.checked = false;
+          localStorage.setItem('smc_auto_trading', 'false');
+          updateAutoTradingUI();
+          return;
+        }
+        localStorage.setItem('smc_auto_trading', 'true');
+        showToast('🤖 Auto-Trading ACTIVADO: Se ejecutarán trades automáticamente al confirmar señales 15m', 'success');
+      } else {
+        localStorage.setItem('smc_auto_trading', 'false');
+        showToast('✋ Auto-Trading DESACTIVADO: Operación manual', 'info');
+      }
+      updateAutoTradingUI();
+    });
+
+    // ─── Interruptor Auto-Breakeven ───
+    const switchAutoBE = document.getElementById('switch-auto-breakeven');
+    function updateAutoBEUI() {
+      const isBE = localStorage.getItem('smc_auto_breakeven') !== 'false';
+      if (switchAutoBE) switchAutoBE.checked = isBE;
+      const modalCheckBE = document.getElementById('check-auto-breakeven');
+      if (modalCheckBE) modalCheckBE.checked = isBE;
+    }
+    updateAutoBEUI();
+
+    switchAutoBE?.addEventListener('change', (e) => {
+      const val = e.target.checked;
+      localStorage.setItem('smc_auto_breakeven', val ? 'true' : 'false');
+      updateAutoBEUI();
+      showToast(val ? '🛡️ Auto Breakeven ACTIVADO (+0.1% fees al tocar TP1)' : '🔔 Auto Breakeven DESACTIVADO (Preguntar antes)', 'info');
     });
 
     btnOpenAPI?.addEventListener('click', () => {
@@ -1283,6 +1457,8 @@ function initApp() {
       checkAutoBE.checked = localStorage.getItem('smc_auto_breakeven') !== 'false';
       checkAutoBE.addEventListener('change', (e) => {
         localStorage.setItem('smc_auto_breakeven', e.target.checked);
+        const switchAutoBE = document.getElementById('switch-auto-breakeven');
+        if (switchAutoBE) switchAutoBE.checked = e.target.checked;
         showToast(e.target.checked ? '🛡️ Breakeven Automático activado' : '🔔 Preguntarme antes de mover a Breakeven', 'info');
       });
     }

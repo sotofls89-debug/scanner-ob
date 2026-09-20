@@ -759,6 +759,10 @@ class BinanceTrade {
         }
       }
 
+      if (slOrderId && slOrderId !== 'SL_OK') {
+        localStorage.setItem(`smc_sl_algo_${cleanSym}`, String(slOrderId));
+      }
+
       // Red de Seguridad de Software Local (Emergency Watcher)
       // Activar vigilante local si Binance rechazó el SL nativo
       if (!slOrderId) {
@@ -858,7 +862,9 @@ class BinanceTrade {
    * Mueve el Stop Loss en Binance automáticamente a Breakeven (+0.1% fees)
    */
   async moveToBreakeven(symbol, entryPrice, type) {
-    if (!this.isConfigured()) return false;
+    if (!this.isConfigured()) {
+      throw new Error('API Keys no configuradas.');
+    }
     const cleanSym = symbol.replace('/', '').toUpperCase();
     const isLong   = type === 'LONG';
     const closeSide = isLong ? 'SELL' : 'BUY';
@@ -867,23 +873,73 @@ class BinanceTrade {
     const isDual = (await this.getPositionMode()) === 'HEDGE';
     const positionSide = isDual ? (isLong ? 'LONG' : 'SHORT') : 'BOTH';
 
-    const bePriceNum = isLong ? entryPrice * 1.0008 : entryPrice * 0.9992;
-    const bePrice    = bePriceNum.toFixed(filters.priceDecimals);
+    // 1. Obtener precio actual de mercado en tiempo real para evitar error -2021
+    let currentMarkPrice = null;
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/fapi/v1/ticker/price?symbol=${cleanSym}`);
+      if (res.ok) {
+        const tickerData = await res.json();
+        if (tickerData?.price) currentMarkPrice = parseFloat(tickerData.price);
+      }
+    } catch (_) {}
+    if (!currentMarkPrice || isNaN(currentMarkPrice) || currentMarkPrice <= 0) {
+      currentMarkPrice = parseFloat(entryPrice);
+    }
+
+    // 2. Calcular precio de Breakeven (+0.08% / -0.08% para amortizar comisiones)
+    let bePriceNum = isLong ? entryPrice * 1.0008 : entryPrice * 0.9992;
+
+    // Validación rigurosa para evitar Error Binance -2021 (Order would immediately trigger)
+    if (isLong) {
+      // En LONG (cierre SELL STOP), triggerPrice DEBE ser estrictamente menor al precio actual de mercado
+      if (bePriceNum >= currentMarkPrice) {
+        console.warn(`[Trade BE] ⚠️ Precio BE (${bePriceNum}) >= Mercado (${currentMarkPrice}). Ajustando por debajo.`);
+        bePriceNum = currentMarkPrice * 0.998;
+      }
+    } else {
+      // En SHORT (cierre BUY STOP), triggerPrice DEBE ser estrictamente mayor al precio actual de mercado
+      if (bePriceNum <= currentMarkPrice) {
+        console.warn(`[Trade BE] ⚠️ Precio BE (${bePriceNum}) <= Mercado (${currentMarkPrice}). Ajustando por encima.`);
+        bePriceNum = currentMarkPrice * 1.002;
+      }
+    }
+
+    // Formatear precio con múltiplo exacto de tickSize y decimales requeridos por Binance
+    const bePrice = this.formatPrice(bePriceNum, filters.tickSize, filters.priceDecimals);
 
     try {
-      // 1. Cancelar órdenes de Stop Loss previas (órdenes estándar abiertas)
+      // 3. Cancelar la orden de Stop Loss previa
+      // A) Cancelar orden Algo previa (crucial para liberar closePosition en Binance)
+      const prevAlgoId = localStorage.getItem(`smc_sl_algo_${cleanSym}`);
+      if (prevAlgoId) {
+        try {
+          console.log(`[Trade BE] 🗑️ Cancelando Algo SL previo (ID: ${prevAlgoId})...`);
+          await this.request('DELETE', '/fapi/v1/order', {
+            type: 'STOP_MARKET',
+            symbol: cleanSym,
+            algoId: parseInt(prevAlgoId) || prevAlgoId
+          });
+        } catch (cErr) {
+          console.warn(`[Trade BE] Cancelación de Algo SL previo: ${cErr.message}`);
+        }
+      }
+
+      // B) Cancelar cualquier otra orden STOP estándar abierta
       try {
         const openOrders = await this.request('GET', '/fapi/v1/openOrders', { symbol: cleanSym });
         if (Array.isArray(openOrders)) {
           for (const ord of openOrders) {
-            if (ord.type === 'STOP_MARKET') {
+            if (ord.type === 'STOP_MARKET' || ord.type === 'STOP') {
               await this.request('DELETE', '/fapi/v1/order', { symbol: cleanSym, orderId: ord.orderId });
             }
           }
         }
-      } catch (delErr) {}
+      } catch (_) {}
 
-      // 2. Colocar nuevo Stop Loss a Breakeven via Algo Order → WebSocket
+      // Breve espera de 250ms para que el motor de Binance libere la condición
+      await new Promise(r => setTimeout(r, 250));
+
+      // 4. Colocar nuevo Stop Loss a Breakeven via Algo Order
       const beParams = {
         symbol:        cleanSym,
         side:          closeSide,
@@ -898,12 +954,32 @@ class BinanceTrade {
         beParams.closePosition = 'true';
       }
 
-      const slOrder = await this.request('POST', '/fapi/v1/order', beParams);
-      console.log('[Trade] ✅ BE SL colocado:', slOrder?.algoId || slOrder?.orderId);
+      let slOrder = null;
+      try {
+        slOrder = await this.request('POST', '/fapi/v1/order', beParams);
+      } catch (postErr) {
+        console.warn('[Trade BE] Falló intento closePosition:true:', postErr.message, '→ Probando con reduceOnly...');
+        delete beParams.closePosition;
+        beParams.reduceOnly = 'true';
+        slOrder = await this.request('POST', '/fapi/v1/order', beParams);
+      }
+
+      const newAlgoId = slOrder?.algoId || slOrder?.orderId || slOrder?.clientAlgoId || 'BE_OK';
+      console.log('[Trade] ✅ BE SL colocado exitosamente en Binance:', newAlgoId, 'a precio:', bePrice);
+      
+      if (newAlgoId && newAlgoId !== 'BE_OK') {
+        localStorage.setItem(`smc_sl_algo_${cleanSym}`, String(newAlgoId));
+      }
+
+      // Red de seguridad local: actualizar si existe
+      if (this.activeLocalSLs && this.activeLocalSLs.has(cleanSym)) {
+        this.registerLocalSL(cleanSym, closeSide, null, bePrice, isLong);
+      }
+
       return slOrder;
     } catch (e) {
-      console.warn('[BinanceTrade] Error moviendo a BE:', e.message);
-      return false;
+      console.error('[BinanceTrade] Error moviendo a Breakeven:', e.message);
+      throw e;
     }
   }
 
