@@ -216,29 +216,13 @@ body {
 
 
 </style>
-  <link rel="stylesheet" href="styles.css?v=20260920-1008">
+  <link rel="stylesheet" href="styles.css?v=20260920-1024">
 </head>
 <body class="bg-bgDark text-white select-none min-h-screen flex justify-center py-4 px-3 sm:px-6">
 
   <div class="app-container w-full max-w-xl md:max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-4">
 
-    <!-- BANNER DE ACTUALIZACIÓN AUTOMÁTICA (oculto por defecto) -->
-    <div id="update-banner" class="hidden fixed top-0 left-0 right-0 z-50 bg-amber-500 text-black text-xs font-bold px-4 py-2.5 flex items-center justify-between shadow-lg">
-      <div class="flex items-center gap-2">
-        <span class="animate-spin">🔄</span>
-        <span>Nueva versión disponible</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <button id="btn-update-now" class="bg-black text-amber-400 px-3 py-1 rounded-lg text-xs font-black active:scale-95">Actualizar Ya</button>
-        <button onclick="document.getElementById('update-banner').classList.add('hidden')" class="text-black font-bold px-1.5 py-0.5 hover:bg-black/20 rounded">✕</button>
-      </div>
-    </div>
 
-    <!-- BANNER DE ANÁLISIS PAUSADO (se muestra cuando la app pasa a segundo plano) -->
-    <div id="pause-banner" class="hidden fixed top-0 left-0 right-0 z-40 bg-gray-900/95 border-b border-rose-500/40 text-rose-300 text-xs font-bold px-4 py-2 flex items-center gap-2 shadow-lg">
-      <span class="animate-pulse">⏸</span>
-      <span>Análisis pausado — abre la app para reanudar el escáner en tiempo real</span>
-    </div>
 
     <!-- HEADER AJUSTADO A PANTALLA MÓVIL (SOLO SCROLL VERTICAL) -->
     <header class="w-full flex items-center justify-between gap-2 pt-1 pb-1">
@@ -512,7 +496,7 @@ body {
       </div>
     <!-- FOOTER SUTIL -->
     <div class="text-center text-[10px] text-gray-500 py-3">
-      SMC Bot Nativo · ZTE Nubia Neo 5G · <span class="build-version-tag font-mono text-gray-400">v20260920-1008</span>
+      SMC Bot Nativo · ZTE Nubia Neo 5G · <span class="build-version-tag font-mono text-gray-400">v20260920-1024</span>
     </div>
 
   </div>
@@ -640,7 +624,7 @@ body {
 
       <div class="pt-1">
         <button type="button" id="btn-force-update-modal" onclick="forceCacheCleanAndReload()" class="w-full py-2 px-3 bg-gray-800/90 hover:bg-gray-700 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95">
-          <span>🔄</span> Limpiar Caché y Forzar Actualización (<span class="build-version-tag">v20260920-1008</span>)
+          <span>🔄</span> Limpiar Caché y Forzar Actualización (<span class="build-version-tag">v20260920-1024</span>)
         </button>
       </div>
 
@@ -873,7 +857,7 @@ body {
 
   <!-- Script principal: Bundle unificado (Zero-404, root-level) -->
   <script id="smc-bundle">
-/* SMC BOT UNIFIED INLINED BUNDLE v20260920-1008 */
+/* SMC BOT UNIFIED INLINED BUNDLE v20260920-1024 */
 /* SMC BOT UNIFIED BUNDLE */
 
 /* --- js/binance_api.js --- */
