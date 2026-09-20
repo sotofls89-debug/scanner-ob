@@ -615,9 +615,26 @@ class BinanceTrade {
       }
     }
 
+    let finalTPPrice = parseFloat(signal.takeProfit);
+    if (currentMarkPrice && !isNaN(currentMarkPrice) && currentMarkPrice > 0) {
+      if (isLong) {
+        // En LONG (cierre SELL TP), triggerPrice DEBE ser estrictamente mayor que el precio de mercado
+        if (finalTPPrice <= currentMarkPrice) {
+          console.warn(`[Trade] ⚠️ Take Profit (${finalTPPrice}) <= Precio mercado (${currentMarkPrice}). Ajustando por encima para evitar error -2021.`);
+          finalTPPrice = currentMarkPrice * 1.01;
+        }
+      } else {
+        // En SHORT (cierre BUY TP), triggerPrice DEBE ser estrictamente menor que el precio de mercado
+        if (finalTPPrice >= currentMarkPrice) {
+          console.warn(`[Trade] ⚠️ Take Profit (${finalTPPrice}) >= Precio mercado (${currentMarkPrice}). Ajustando por debajo para evitar error -2021.`);
+          finalTPPrice = currentMarkPrice * 0.99;
+        }
+      }
+    }
+
     // Formatear precios con la cantidad exacta de decimales y múltiplo exacto de tickSize
     const formattedStop = this.formatPrice(finalStopPrice, filters.tickSize, filters.priceDecimals);
-    const formattedTP   = this.formatPrice(signal.takeProfit, filters.tickSize, filters.priceDecimals);
+    const formattedTP   = this.formatPrice(finalTPPrice, filters.tickSize, filters.priceDecimals);
 
     // 2. Comprobar modo de posición (Hedge o One-Way)
     const isDual = (await this.getPositionMode()) === 'HEDGE';
@@ -751,50 +768,71 @@ class BinanceTrade {
     }
 
     // ─── 6. Take Profit ───────────────────────────────────────────────────────
-    // TP usa LIMIT GTC con reduceOnly:true colocado en el libro de órdenes (Maker order sin costo extra)
+    // Intento 1: TAKE_PROFIT_MARKET con closePosition='true' (Anclado al TP/SL oficial de la posición en Binance)
     try {
       const tpParams = {
-        symbol:      cleanSym,
-        side:        closeSide,
-        type:        'LIMIT',
-        price:       formattedTP,
-        quantity:    finalQtyStr,
-        reduceOnly:  true,
-        timeInForce: 'GTC'
+        symbol:        cleanSym,
+        side:          closeSide,
+        type:          'TAKE_PROFIT_MARKET',
+        triggerPrice:  formattedTP,
+        workingType:   'MARK_PRICE'
       };
+
       if (isDual) {
-        delete tpParams.reduceOnly;
         tpParams.positionSide = positionSide;
+        tpParams.quantity     = finalQtyStr;
       } else {
-        tpParams.positionSide = 'BOTH';
+        tpParams.positionSide  = 'BOTH';
+        tpParams.closePosition = 'true';
       }
 
       const tpOrder = await this.request('POST', '/fapi/v1/order', tpParams);
       tpOrderId = tpOrder?.algoId || tpOrder?.orderId || tpOrder?.clientAlgoId || 'TP_OK';
-      console.log('[Trade] ✅ TP colocado (LIMIT GTC):', tpOrderId);
+      console.log('[Trade] ✅ TP colocado en Posición Binance (TAKE_PROFIT_MARKET closePosition):', tpOrderId);
     } catch (tpErr) {
-      console.warn('[Trade] TP LIMIT GTC falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET...');
+      console.warn('[Trade] TP TAKE_PROFIT_MARKET closePosition falló:', tpErr.message, '→ probando TAKE_PROFIT_MARKET con cantidad explícita...');
       try {
-        const tpMkt = {
-          symbol:       cleanSym,
-          side:         closeSide,
-          type:         'TAKE_PROFIT_MARKET',
-          triggerPrice: formattedTP,
-          quantity:     finalQtyStr,
-          workingType:  'MARK_PRICE'
+        const tpQtyParams = {
+          symbol:        cleanSym,
+          side:          closeSide,
+          type:          'TAKE_PROFIT_MARKET',
+          triggerPrice:  formattedTP,
+          quantity:      finalQtyStr,
+          workingType:   'MARK_PRICE'
         };
         if (isDual) {
-          tpMkt.positionSide = positionSide;
+          tpQtyParams.positionSide = positionSide;
         } else {
-          tpMkt.positionSide = 'BOTH';
-          tpMkt.reduceOnly   = 'true';
+          tpQtyParams.positionSide = 'BOTH';
+          tpQtyParams.reduceOnly   = 'true';
         }
-        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpMkt);
+        const tpOrder2 = await this.request('POST', '/fapi/v1/order', tpQtyParams);
         tpOrderId = tpOrder2?.algoId || tpOrder2?.orderId || tpOrder2?.clientAlgoId || 'TP_OK';
-        console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET):', tpOrderId);
+        console.log('[Trade] ✅ TP colocado (TAKE_PROFIT_MARKET reduceOnly):', tpOrderId);
       } catch (e2) {
-        tpErrorMsg = `TP (${e2.message})`;
-        console.error('[Trade TP Error definitivo]', e2.message);
+        console.warn('[Trade] TP TAKE_PROFIT_MARKET reduceOnly falló:', e2.message, '→ probando LIMIT GTC fallback...');
+        try {
+          const tpLimitParams = {
+            symbol:      cleanSym,
+            side:        closeSide,
+            type:        'LIMIT',
+            price:       formattedTP,
+            quantity:    finalQtyStr,
+            timeInForce: 'GTC'
+          };
+          if (isDual) {
+            tpLimitParams.positionSide = positionSide;
+          } else {
+            tpLimitParams.positionSide = 'BOTH';
+            tpLimitParams.reduceOnly   = 'true';
+          }
+          const tpOrder3 = await this.request('POST', '/fapi/v1/order', tpLimitParams);
+          tpOrderId = tpOrder3?.algoId || tpOrder3?.orderId || tpOrder3?.clientAlgoId || 'TP_OK';
+          console.log('[Trade] ✅ TP colocado (LIMIT GTC Fallback):', tpOrderId);
+        } catch (e3) {
+          tpErrorMsg = `TP (${e3.message})`;
+          console.error('[Trade TP Error definitivo]', e3.message);
+        }
       }
     }
 
