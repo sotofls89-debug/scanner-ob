@@ -115,30 +115,51 @@ function handleLocal(req, res) {
     safePath = safePath.slice(1);
   }
 
-  const filePath = path.join(ROOT, safePath);
-  const ext = path.extname(filePath).toLowerCase();
-  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  const candidateDirs = [ROOT, process.cwd(), __dirname];
+  let foundPath = null;
+  for (const dir of candidateDirs) {
+    try {
+      const p = path.join(dir, safePath);
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+        foundPath = p;
+        break;
+      }
+    } catch (_) {}
+  }
 
-  fs.readFile(filePath, (err, content) => {
+  const reqExt = path.extname(safePath).toLowerCase();
+  if (!foundPath) {
+    const isAsset = reqExt && reqExt !== '.html';
+    if (!isAsset) {
+      for (const dir of candidateDirs) {
+        try {
+          const ip = path.join(dir, 'index.html');
+          if (fs.existsSync(ip)) {
+            res.writeHead(200, {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-cache'
+            });
+            res.end(fs.readFileSync(ip));
+            return;
+          }
+        } catch (_) {}
+      }
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('404 Not Found');
+    return;
+  }
+
+  const ext = path.extname(foundPath).toLowerCase();
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+  const isCacheable = ext === '.png' || ext === '.jpg' || ext === '.svg' || ext === '.ico';
+
+  fs.readFile(foundPath, (err, content) => {
     if (err) {
-      // Fallback a index.html para soportar rutas SPA
-      const indexPath = path.join(ROOT, 'index.html');
-      fs.readFile(indexPath, (indexErr, indexContent) => {
-        if (!indexErr) {
-          res.writeHead(200, {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-cache'
-          });
-          res.end(indexContent);
-        } else {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('404 Not Found');
-        }
-      });
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('500 Internal Server Error');
       return;
     }
-
-    const isCacheable = ext === '.png' || ext === '.jpg' || ext === '.svg' || ext === '.ico';
     res.writeHead(200, {
       'Content-Type': contentType,
       'Cache-Control': isCacheable ? 'public, max-age=86400' : 'no-cache'
@@ -147,7 +168,7 @@ function handleLocal(req, res) {
   });
 }
 
-// ─── 3. MODO SERVIDOR LOCAL (Desktop PC) ───
+// ─── 3. MODO VERCEL SERVERLESS & SERVIDOR LOCAL (Desktop PC) ───
 import os from 'os';
 
 function getLocalIp() {
@@ -164,16 +185,22 @@ function getLocalIp() {
   return 'localhost';
 }
 
-const server = http.createServer((req, res) => {
-  handleLocal(req, res);
-});
+export default async function handler(req, res) {
+  return handleLocal(req, res);
+}
 
-server.listen(PORT, '0.0.0.0', () => {
-  const localIp = getLocalIp();
-  console.log('============================================================');
-  console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo en puerto ${PORT}`);
-  console.log(`💻 En tu PC:     http://localhost:${PORT}`);
-  console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
-  console.log('============================================================');
-});
+if (!process.env.VERCEL) {
+  const server = http.createServer((req, res) => {
+    handleLocal(req, res);
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    const localIp = getLocalIp();
+    console.log('============================================================');
+    console.log(`⚡ Servidor SMC Bot & Proxy Binance Activo en puerto ${PORT}`);
+    console.log(`💻 En tu PC:     http://localhost:${PORT}`);
+    console.log(`📱 En tu Móvil:  http://${localIp}:${PORT}`);
+    console.log('============================================================');
+  });
+}
 

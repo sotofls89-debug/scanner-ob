@@ -2,6 +2,7 @@
   "name": "scanner-ob",
   "version": "1.0.0",
   "type": "module",
+  "main": "server.js",
   "scripts": {
     "build": "node bump-version.js",
     "start": "node server.js"

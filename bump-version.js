@@ -50,15 +50,24 @@ if (fs.existsSync(swPath)) {
   fs.writeFileSync(swPath, swContent, 'utf8');
 }
 
-// 3. Invalida la caché de scripts y css en index.html y actualiza etiquetas de versión
+// 3. Inyectar bundle.js unificado directamente en index.html (Zero-404 Inlined) y actualizar etiquetas
 if (fs.existsSync(htmlPath)) {
   let htmlContent = fs.readFileSync(htmlPath, 'utf8');
-  htmlContent = htmlContent.replace(/src="bundle\.js(?:\?v=[^"]*)?"/g, `src="bundle.js?v=${version}"`);
-  htmlContent = htmlContent.replace(/src="js\/([^"]+?)(?:\?v=[^"]*)?"/g, `src="js/$1?v=${version}"`);
+
+  const inlinedRegex = /<script id="smc-bundle">[\s\S]*?<\/script>/;
+  const externalScriptRegex = /<script src="bundle\.js[^>]*><\/script>/;
+  const newScriptTag = `<script id="smc-bundle">\n/* SMC BOT UNIFIED INLINED BUNDLE v${version} */\n${bundleContent}\n  </script>`;
+
+  if (inlinedRegex.test(htmlContent)) {
+    htmlContent = htmlContent.replace(inlinedRegex, newScriptTag);
+  } else if (externalScriptRegex.test(htmlContent)) {
+    htmlContent = htmlContent.replace(externalScriptRegex, newScriptTag);
+  }
+
   htmlContent = htmlContent.replace(/href="styles\.css(?:\?v=[^"]*)?"/g, `href="styles.css?v=${version}"`);
   htmlContent = htmlContent.replace(/(<span[^>]*class="[^"]*build-version-tag[^"]*"[^>]*>)[^<]*(<\/span>)/g, `$1v${version}$2`);
   fs.writeFileSync(htmlPath, htmlContent, 'utf8');
 }
 
 console.log(`✅ Bundle y versión actualizados: v${version}`);
-console.log(`   Caché de scripts en index.html y sw.js sincronizada.`);
+console.log(`   Bundle JavaScript inyectado directamente en index.html (Zero-404 garantizado).`);

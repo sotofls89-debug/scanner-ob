@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "server.js": {
+      "includeFiles": "**"
+    }
+  },
   "rewrites": [
     {
       "source": "/proxy-binance-demo/:path*",
